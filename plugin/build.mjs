@@ -13,6 +13,7 @@ const buildDir = path.join(sourceRoot, '.build');
 const packageName = 'external-transcode-player';
 const version = '0.1.3';
 const packageFile = `${packageName}-${version}.zip`;
+const indexFile = `index-${version}.yml`;
 const stagingDir = path.join(buildDir, packageFile.replace(/\.zip$/, ''));
 
 await rm(buildDir, { recursive: true, force: true });
@@ -49,4 +50,9 @@ const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 await writeFile(
   path.join(sourceRoot, 'index.yml'),
   `- id: ${packageName}\n  name: External Transcode Player\n  version: ${version}\n  date: ${now}\n  path: packages/${packageFile}\n  sha256: ${sha256}\n  metadata:\n    manifest: external-transcode-player.yml\n`
+);
+
+await copyFile(
+  path.join(sourceRoot, 'index.yml'),
+  path.join(sourceRoot, indexFile)
 );
