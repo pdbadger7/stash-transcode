@@ -11,11 +11,12 @@ const sourceRoot = path.join(repoRoot, 'plugin-source');
 const packageDir = path.join(sourceRoot, 'packages');
 const buildDir = path.join(sourceRoot, '.build');
 const packageName = 'external-transcode-player';
-const version = '0.1.0';
+const version = '0.1.1';
 const packageFile = `${packageName}-${version}.zip`;
 const stagingDir = path.join(buildDir, packageFile.replace(/\.zip$/, ''));
 
 await rm(buildDir, { recursive: true, force: true });
+await rm(packageDir, { recursive: true, force: true });
 await mkdir(stagingDir, { recursive: true });
 await mkdir(packageDir, { recursive: true });
 
