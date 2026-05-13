@@ -38,7 +38,7 @@ A proof-of-concept system for offloading video playback from Stash to an externa
 3. **Path Mapping Server-Side**: Path mapping (e.g., `/data/` → `/mnt/nas/media/`) happens only on the agent, not in the browser.
 4. **Fallback Support**: If the agent is unavailable, the plugin automatically falls back to the original Stash player.
 
-## Features (MVP)
+## Features (MVP + Phase 2)
 
 - ✅ **Direct playback** with HTTP Range request support
 - ✅ **Scene resolution** via Stash GraphQL API
@@ -47,7 +47,7 @@ A proof-of-concept system for offloading video playback from Stash to an externa
 - ✅ **CORS support** for browser playback
 - ✅ **Probe endpoint** to check agent availability
 - ✅ **Fallback to original player** on error
-- ⏳ **HLS transcoding** with ffmpeg (Phase 2)
+- ✅ **HLS transcoding** with ffmpeg (Phase 2)
 - ⏳ **Hardware acceleration** support (VAAPI, QSV, NVENC)
 - ⏳ **Quality selector** and adaptive bitrate
 
@@ -75,7 +75,8 @@ stash-external-transcode/
 │   ├── tsconfig.json
 │   ├── tests/
 │   │   ├── pathMapper.test.ts
-│   │   └── directStream.test.ts
+│   │   ├── directStream.test.ts
+│   │   └── hlsStream.test.ts
 │   └── src/
 │       ├── index.ts
 │       ├── config.ts
@@ -83,6 +84,7 @@ stash-external-transcode/
 │       ├── stashClient.ts
 │       ├── pathMapper.ts
 │       ├── directStream.ts
+│       ├── hlsStream.ts
 │       └── auth.ts
 └── k8s/
     ├── configmap.yaml

@@ -5,6 +5,7 @@ import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
+import { HLSStream } from './hlsStream.js';
 import {
   parseRangeHeader,
   getFileSize,
@@ -21,6 +22,13 @@ const stashClient = new StashClient(
 );
 const pathMapper = new PathMapper(config.pathMappings, config.mediaRoot);
 const authValidator = new AuthValidator(config.agentSharedToken);
+const hlsStream = new HLSStream({
+  cacheDir: config.hlsCacheDir,
+  ffmpegPath: config.ffmpegPath,
+  hwaccel: config.hwaccel as 'none' | 'vaapi' | 'qsv' | 'nvenc',
+  segmentDuration: 4,
+  enableDebug: process.env.DEBUG === 'true',
+});
 
 const app = Fastify({
   logger: true,
@@ -183,6 +191,112 @@ app.get<{
     }
   }
 );
+
+// HLS master.m3u8 endpoint
+app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
+  '/stash/scene/:id/master.m3u8',
+  async (request, reply) => {
+    const { id } = request.params;
+    const { token } = request.query;
+
+    if (!authValidator.validateQueryToken(token)) {
+      return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+    }
+
+    try {
+      const scene = await stashClient.getScene(id);
+      if (!scene) {
+        return reply.code(404).send({ ok: false, error: 'Scene not found' });
+      }
+
+      if (!scene.files || scene.files.length === 0) {
+        return reply
+          .code(400)
+          .send({ ok: false, error: 'Scene has no files' });
+      }
+
+      const filePath = scene.files[0].path;
+      const mapResult = pathMapper.map(filePath);
+
+      if (!mapResult.success || !mapResult.path) {
+        return reply
+          .code(400)
+          .send({
+            ok: false,
+            error: mapResult.error || 'Path mapping failed',
+          });
+      }
+
+      const playlist = await hlsStream.getMasterPlaylist(id, mapResult.path);
+
+      reply
+        .header('Content-Type', 'application/vnd.apple.mpegurl')
+        .header('Cache-Control', 'no-cache')
+        .send(playlist);
+    } catch (err) {
+      console.error(`Failed to generate HLS playlist for scene ${id}:`, err);
+      return reply.code(500).send({
+        ok: false,
+        error: 'Failed to generate HLS stream',
+      });
+    }
+  }
+);
+
+// HLS segment endpoint
+app.get<{
+  Params: { id: string; segmentName: string };
+  Querystring: { token?: string };
+}>(
+  '/stash/scene/:id/segment/:segmentName',
+  async (request, reply) => {
+    const { id, segmentName } = request.params;
+    const { token } = request.query;
+
+    if (!authValidator.validateQueryToken(token)) {
+      return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+    }
+
+    // Security: prevent directory traversal
+    if (segmentName.includes('..') || segmentName.startsWith('/')) {
+      return reply.code(400).send({
+        ok: false,
+        error: 'Invalid segment name',
+      });
+    }
+
+    try {
+      const segment = await hlsStream.getSegment(id, segmentName);
+
+      if (!segment) {
+        return reply.code(404).send({ ok: false, error: 'Segment not found' });
+      }
+
+      const contentType = segmentName.endsWith('.ts')
+        ? 'video/mp2t'
+        : 'application/octet-stream';
+
+      reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=3600')
+        .send(segment);
+    } catch (err) {
+      console.error(
+        `Failed to serve segment ${segmentName} for scene ${id}:`,
+        err
+      );
+      return reply.code(500).send({
+        ok: false,
+        error: 'Failed to serve segment',
+      });
+    }
+  }
+);
+
+// Cleanup old transcodes periodically (every 30 minutes)
+setInterval(() => {
+  hlsStream.cleanupOldTranscodes();
+}, 30 * 60 * 1000);
 
 // Start server
 await app.listen({ port: config.port, host: '0.0.0.0' });

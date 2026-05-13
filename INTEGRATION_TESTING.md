@@ -93,6 +93,20 @@ curl -H 'Range: bytes=0-10485759' \
   'http://localhost:8080/stash/scene/123/direct'
 ```
 
+### 6b. Test HLS Transcoding (Phase 2)
+
+```bash
+# Get HLS master playlist
+curl 'http://localhost:8080/stash/scene/123/master.m3u8' -o /tmp/master.m3u8
+cat /tmp/master.m3u8
+
+# Get a segment (starts FFmpeg transcoding if not already running)
+curl 'http://localhost:8080/stash/scene/123/segment/segment_000.ts' -o /tmp/segment_000.ts
+
+# Monitor HLS cache directory
+ls -la /cache/hls/123/
+```
+
 ### 7. Install Stash Plugin
 
 1. Copy plugin files to Stash plugins directory
@@ -138,18 +152,85 @@ docker run -e STASH_GRAPHQL_URL=http://host.docker.internal:9999/graphql \
 npm -w agent run dev
 ```
 
+## What's New in Phase 2
+
+### HLS Transcoding
+
+The agent now supports HLS transcoding via FFmpeg:
+
+1. **GET /stash/scene/:id/master.m3u8** - Generates HLS master playlist
+   - Spawns FFmpeg on-demand
+   - Caches segments in `/cache/hls/:id/`
+   - Returns placeholder while transcoding
+
+2. **GET /stash/scene/:id/segment/:segmentName** - Serves HLS segments
+   - Prevents directory traversal attacks
+   - Returns cached segments with caching headers
+   - Supports path traversal prevention
+
+3. **FFmpeg Integration**
+   - Configurable hardware acceleration (VAAPI, QSV, NVENC, none)
+   - Process management (tracks active transcoding)
+   - Segment caching with automatic cleanup (24-hour default)
+
+### Testing HLS
+
+1. Test with mock segment:
+   ```bash
+   # Create a test segment
+   echo "test" > /tmp/test-segment.ts
+   mkdir -p /cache/hls/123
+   cp /tmp/test-segment.ts /cache/hls/123/segment_000.ts
+   
+   # Retrieve it
+   curl 'http://localhost:8080/stash/scene/123/segment/segment_000.ts'
+   ```
+
+2. Test with real FFmpeg:
+   ```bash
+   # Create a simple test video
+   ffmpeg -f lavfi -i testsrc=duration=10:size=320x240 -f lavfi -i sine=frequency=1000:duration=10 /tmp/test.mkv
+   
+   # Place it in media root
+   cp /tmp/test.mkv /mnt/nas/media/test.mkv
+   
+   # Configure Stash with this video (or mock GraphQL)
+   # Request HLS: curl 'http://localhost:8080/stash/scene/123/master.m3u8'
+   ```
+
+## Fixed Issues
+
+### Critical HTTPS Bug (Phase 2)
+
+**Issue**: Agent failed on GraphQL queries with `ERR_INVALID_ARG_TYPE` when `STASH_INSECURE_TLS=true`
+
+**Root Cause**: Passing plain object `{ rejectUnauthorized: false }` as httpsAgent to axios
+
+**Fix**: Import `https` module and create proper `https.Agent` instance
+```typescript
+import https from 'https';
+
+// Before (broken):
+httpsAgent: this.insecureTls ? { rejectUnauthorized: false } : undefined,
+
+// After (fixed):
+this.httpsAgent = insecureTls ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+```
+
 ## Troubleshooting
 
 - **Agent won't start**: Check environment variables, especially `STASH_API_KEY`
-- **GraphQL errors**: Verify Stash URL and API key
+- **GraphQL errors**: Verify Stash URL and API key. If using self-signed cert, set `STASH_INSECURE_TLS=true`
 - **Path mapping fails**: Check `PATH_MAPPINGS` format and `MEDIA_ROOT`
 - **CORS errors**: Verify `CORS_ALLOWED_ORIGINS` includes Stash URL
-- **HLS not working yet**: Direct playback only in MVP
+- **HLS errors**: Check FFmpeg is installed (`which ffmpeg`), verify `/cache/hls` is writable
+- **No segments generated**: Check FFmpeg logs, ensure input file is valid media format
+- **Segments not serving**: Verify path traversal prevention (check logs if DEBUG=true)
 
-## Next Steps After MVP Verification
+## Next Steps After Phase 2 Verification
 
 See README.md for:
 - Full configuration guide
 - Production deployment
-- Phase 2 (HLS transcoding)
+- Future improvements (Phase 3+)
 - Known limitations and roadmap

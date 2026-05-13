@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import https from 'https';
 import type { StashScene } from './types.js';
 
 const STASH_SCENE_QUERY = `
@@ -25,12 +26,14 @@ const STASH_SCENE_QUERY = `
 export class StashClient {
   private baseUrl: string;
   private apiKey: string;
-  private insecureTls: boolean;
+  private httpsAgent?: https.Agent;
 
   constructor(baseUrl: string, apiKey: string, insecureTls = false) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
-    this.insecureTls = insecureTls;
+    if (insecureTls) {
+      this.httpsAgent = new https.Agent({ rejectUnauthorized: false });
+    }
   }
 
   async getScene(id: string): Promise<StashScene | null> {
@@ -46,9 +49,7 @@ export class StashClient {
             'Content-Type': 'application/json',
             'ApiKey': this.apiKey,
           },
-          httpsAgent: this.insecureTls
-            ? { rejectUnauthorized: false }
-            : undefined,
+          httpsAgent: this.httpsAgent,
         }
       );
 

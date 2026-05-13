@@ -1,11 +1,11 @@
-# Stash External Transcode - MVP Completion Summary
+# Stash External Transcode - MVP + Phase 2 Completion Summary
 
 **Date**: 2026-05-13  
-**Status**: ✅ COMPLETE
+**Status**: ✅ COMPLETE (MVP + HLS Transcoding)
 
 ## What Was Built
 
-A complete proof-of-concept system that allows video playback in Stash to be handled by an external Kubernetes-hosted transcoding service while keeping Stash as the UI and catalog.
+A complete proof-of-concept system that allows video playback in Stash to be handled by an external Kubernetes-hosted transcoding service while keeping Stash as the UI and catalog. Includes **direct playback (MVP)** and **HLS transcoding with ffmpeg (Phase 2)**.
 
 ### Architecture
 
@@ -24,7 +24,7 @@ NAS/Media Storage (serve video)
 ## MVP Acceptance Criteria - ALL MET ✅
 
 - ✅ **Repository builds successfully** - TypeScript compiles, dist/ generated
-- ✅ **Agent starts from Docker** - Image built (597MB), tested, responsive
+- ✅ **Agent starts from Docker** - Image built (>600MB), tested, responsive
 - ✅ **Resolves Stash scene IDs** - GraphQL client queries FindScene
 - ✅ **Maps paths safely** - /data/ → /mnt/nas/media/ with traversal prevention
 - ✅ **Direct playback with HTTP Range** - Serves video with byte-range requests
@@ -33,28 +33,46 @@ NAS/Media Storage (serve video)
 - ✅ **Fallback to original player** - Works when agent unavailable
 - ✅ **Comprehensive README** - 559 lines with setup, architecture, troubleshooting
 
+## Phase 2 - HLS Transcoding - ALL MET ✅
+
+- ✅ **Fixed critical HTTPS agent bug** - Proper https.Agent configuration for axios
+- ✅ **HLS master.m3u8 endpoint** - Generates and caches HLS playlists
+- ✅ **HLS segment serving** - Streams generated .ts segment files with path traversal prevention
+- ✅ **FFmpeg integration** - Spawns ffmpeg for real-time transcoding with ffmpeg process management
+- ✅ **Segment caching** - Segments cached to /cache/hls, periodic cleanup
+- ✅ **Hardware acceleration ready** - Code structure for VAAPI, QSV, NVENC (currently using libx264)
+- ✅ **Concurrent transcode management** - Maps active transcoding processes by scene ID
+- ✅ **All tests passing** - 20/20 tests (pathMapper, directStream, hlsStream)
+
 ## Project Deliverables
 
 ### 1. Agent Service (Node.js/TypeScript/Fastify)
 ```
 agent/
 ├── src/
-│   ├── index.ts (main server, all endpoints)
-│   ├── stashClient.ts (Stash GraphQL queries)
+│   ├── index.ts (main server with all endpoints including HLS)
+│   ├── stashClient.ts (Stash GraphQL queries - HTTPS fix applied)
 │   ├── pathMapper.ts (path mapping + traversal prevention)
 │   ├── directStream.ts (HTTP Range request handling)
+│   ├── hlsStream.ts (HLS transcoding with ffmpeg)
 │   ├── auth.ts (token validation)
 │   ├── config.ts (environment variables)
 │   └── types.ts (TypeScript interfaces)
 ├── tests/
 │   ├── pathMapper.test.ts (6 tests)
-│   └── directStream.test.ts (6 tests)
+│   ├── directStream.test.ts (6 tests)
+│   └── hlsStream.test.ts (8 tests)
 ├── Dockerfile (optimized multi-stage build)
 ├── package.json
 └── tsconfig.json
 ```
 
-**All tests passing: 12/12 ✅**
+**All tests passing: 20/20 ✅**
+
+**New in Phase 2:**
+- `hlsStream.ts` (300+ lines) - FFmpeg integration, segment caching, transcoding process management
+- `tests/hlsStream.test.ts` (8 tests) - Path traversal prevention, segment serving, cleanup
+- HTTPS agent bug fixed in `stashClient.ts` (proper https.Agent instantiation)
 
 ### 2. Stash UI Plugin (React/TypeScript)
 ```
