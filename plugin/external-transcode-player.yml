@@ -50,7 +50,7 @@ settings:
 ui:
   csp:
     connect-src:
-      - https:
-      - http:
+      - "https:"
+      - "http:"
   javascript:
     - externalTranscodePlayer.js
