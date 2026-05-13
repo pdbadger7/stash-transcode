@@ -1,0 +1,68 @@
+name: External Transcode Player
+description: >
+  Redirects scene playback to an external transcoding service while
+  maintaining Stash as the UI and catalog.
+version: 0.1.0
+author: Stash External Transcode
+
+settings:
+  externalTranscodeBaseUrl:
+    displayName: External Transcoder Base URL
+    description: Base URL of the external transcoding agent
+    type: STRING
+    default: https://video.home
+
+  playbackMode:
+    displayName: Playback Mode
+    description: How to play video (HLS streaming or direct download)
+    type: STRING
+    default: direct
+    options:
+      - direct
+      - hls
+
+  directPathPattern:
+    displayName: Direct Playback Path Pattern
+    description: URL path pattern for direct playback (use {id} for scene ID)
+    type: STRING
+    default: /stash/scene/{id}/direct
+
+  hlsPathPattern:
+    displayName: HLS Playback Path Pattern
+    description: URL path pattern for HLS master manifest (use {id} for scene ID)
+    type: STRING
+    default: /stash/scene/{id}/master.m3u8
+
+  probeBeforeReplace:
+    displayName: Probe External Agent
+    description: Check if external agent is available before replacing player
+    type: BOOLEAN
+    default: true
+
+  fallbackToStashPlayer:
+    displayName: Fallback to Stash Player
+    description: >
+      Fall back to original Stash player if external agent unavailable or on error
+    type: BOOLEAN
+    default: true
+
+  sharedToken:
+    displayName: Shared Authentication Token
+    description: >
+      Optional token to include in requests to external agent.
+      Leave empty for no authentication.
+    type: STRING
+    default: ""
+
+  debug:
+    displayName: Debug Logging
+    description: Enable detailed console logging
+    type: BOOLEAN
+    default: false
+
+ui:
+  requires: v3
+
+patches:
+  - name: "Scene Player"
+    location: "ScenePlayer"

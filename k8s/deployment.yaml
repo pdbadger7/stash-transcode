@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  namespace: stash
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+      - name: agent
+        image: stash-transcode-agent:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: agent-config
+        - secretRef:
+            name: agent-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
+        volumeMounts:
+        - name: nas-media
+          mountPath: /mnt/nas/media
+          readOnly: true
+        - name: hls-cache
+          mountPath: /cache/hls
+      volumes:
+      - name: nas-media
+        nfs:
+          server: nas.local
+          path: /media
+      - name: hls-cache
+        emptyDir: {}
