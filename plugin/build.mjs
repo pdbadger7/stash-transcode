@@ -11,7 +11,7 @@ const sourceRoot = path.join(repoRoot, 'plugin-source');
 const packageDir = path.join(sourceRoot, 'packages');
 const buildDir = path.join(sourceRoot, '.build');
 const packageName = 'external-transcode-player';
-const version = '0.1.2';
+const version = '0.1.3';
 const packageFile = `${packageName}-${version}.zip`;
 const stagingDir = path.join(buildDir, packageFile.replace(/\.zip$/, ''));
 
