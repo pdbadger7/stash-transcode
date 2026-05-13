@@ -47,4 +47,36 @@ describe('StashClient', () => {
 
     expect(scene).toBeNull();
   });
+
+  it('retries scene lookup with relay-style encoded IDs', async () => {
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            findScene: null,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            findScene: {
+              id: '5691',
+              files: [{ id: 'f1', path: '/data/video.mp4' }],
+            },
+          },
+        },
+      });
+
+    const client = new StashClient('https://stash.example/graphql', 'api-key');
+    const scene = await client.getScene('5691');
+
+    expect(scene?.id).toBe('5691');
+    expect(postSpy).toHaveBeenCalledTimes(2);
+    const firstPayload = postSpy.mock.calls[0]?.[1] as { variables: { id: string } };
+    const secondPayload = postSpy.mock.calls[1]?.[1] as { variables: { id: string } };
+    expect(firstPayload.variables.id).toBe('5691');
+    expect(secondPayload.variables.id).toBe(Buffer.from('Scene:5691').toString('base64'));
+  });
 });

@@ -25,6 +25,19 @@ type FindSceneResponse = {
   errors?: GraphQLError[];
 };
 
+function buildSceneIdCandidates(id: string): string[] {
+  const normalizedId = id.trim();
+  const candidates = new Set<string>();
+
+  if (normalizedId.length > 0) {
+    candidates.add(normalizedId);
+    candidates.add(Buffer.from(`Scene:${normalizedId}`).toString('base64'));
+    candidates.add(Buffer.from(`scene:${normalizedId}`).toString('base64'));
+  }
+
+  return [...candidates];
+}
+
 export class StashClient {
   private baseUrl: string;
   private apiKey: string;
@@ -40,30 +53,37 @@ export class StashClient {
 
   async getScene(id: string): Promise<StashScene | null> {
     try {
-      const response = await axios.post<FindSceneResponse>(
-        this.baseUrl,
-        {
-          query: STASH_SCENE_QUERY,
-          variables: { id },
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'ApiKey': this.apiKey,
+      const idCandidates = buildSceneIdCandidates(id);
+      for (const candidateId of idCandidates) {
+        const response = await axios.post<FindSceneResponse>(
+          this.baseUrl,
+          {
+            query: STASH_SCENE_QUERY,
+            variables: { id: candidateId },
           },
-          httpsAgent: this.httpsAgent,
-        }
-      );
-
-      if (response.data?.errors?.length) {
-        console.error(
-          `GraphQL errors while fetching scene ${id}:`,
-          response.data.errors.map((error) => error.message).filter(Boolean)
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'ApiKey': this.apiKey,
+            },
+            httpsAgent: this.httpsAgent,
+          }
         );
+
+        if (response.data?.errors?.length) {
+          console.error(
+            `GraphQL errors while fetching scene ${id} (candidate ${candidateId}):`,
+            response.data.errors.map((error) => error.message).filter(Boolean)
+          );
+        }
+
+        const scene = response.data?.data?.findScene;
+        if (scene) {
+          return scene;
+        }
       }
 
-      const scene = response.data?.data?.findScene;
-      return scene || null;
+      return null;
     } catch (error) {
       if (error instanceof AxiosError) {
         console.error(
