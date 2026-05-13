@@ -1,10 +1,9 @@
 import { React } from './runtime.js';
-import {
-  buildPlaybackUrl,
-  probeExternalAgent,
-} from './stashApi.js';
+import { GQL } from './runtime.js';
+import { buildPlaybackUrl, probeExternalAgent } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
 import { buildOriginalPlayerProps } from './playerProps.js';
+import { resolveSettings } from './settings.js';
 import type {
   PlaybackQualityId,
   StashScene,
@@ -13,31 +12,10 @@ import type {
 
 const { useState, useEffect, useMemo } = React;
 
-const DEFAULT_SETTINGS: PluginSettings = {
-  externalTranscodeBaseUrl: 'https://video.home',
-  playbackMode: 'direct',
-  directPathPattern: '/stash/scene/{id}/direct',
-  hlsPathPattern: '/stash/scene/{id}/master.m3u8',
-  probeBeforeReplace: true,
-  fallbackToStashPlayer: true,
-  sharedToken: '',
-  debug: false,
-};
-
-function normalizeSettings(
-  settings?: Partial<PluginSettings> | null
-): PluginSettings {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...settings,
-    playbackMode: settings?.playbackMode === 'hls' ? 'hls' : 'direct',
-  };
-}
-
 type ScenePlayerPatchProps = {
   scene?: StashScene;
   originalComponent: React.ComponentType<Record<string, unknown>>;
-  settings: PluginSettings;
+  settings?: Partial<PluginSettings> | null;
 } & Record<string, unknown>;
 
 /**
@@ -50,7 +28,11 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   settings,
   ...playerProps
 }) => {
-  const resolvedSettings = useMemo(() => normalizeSettings(settings), [settings]);
+  const { data: configurationData } = GQL.useConfigurationQuery();
+  const resolvedSettings = useMemo(
+    () => resolveSettings(configurationData, settings),
+    [configurationData, settings]
+  );
   const [useExternal, setUseExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);

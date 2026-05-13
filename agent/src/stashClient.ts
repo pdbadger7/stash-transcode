@@ -6,22 +6,24 @@ const STASH_SCENE_QUERY = `
   query FindScene($id: ID!) {
     findScene(id: $id) {
       id
-      title
-      duration
-      width
-      height
       files {
         id
         path
-        duration
-        videoCodec
-        audioCodec
-        width
-        height
       }
     }
   }
 `;
+
+type GraphQLError = {
+  message?: string;
+};
+
+type FindSceneResponse = {
+  data?: {
+    findScene?: StashScene;
+  };
+  errors?: GraphQLError[];
+};
 
 export class StashClient {
   private baseUrl: string;
@@ -38,7 +40,7 @@ export class StashClient {
 
   async getScene(id: string): Promise<StashScene | null> {
     try {
-      const response = await axios.post<{ data?: { findScene?: StashScene } }>(
+      const response = await axios.post<FindSceneResponse>(
         this.baseUrl,
         {
           query: STASH_SCENE_QUERY,
@@ -52,6 +54,13 @@ export class StashClient {
           httpsAgent: this.httpsAgent,
         }
       );
+
+      if (response.data?.errors?.length) {
+        console.error(
+          `GraphQL errors while fetching scene ${id}:`,
+          response.data.errors.map((error) => error.message).filter(Boolean)
+        );
+      }
 
       const scene = response.data?.data?.findScene;
       return scene || null;

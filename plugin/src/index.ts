@@ -3,29 +3,10 @@ import { ScenePlayerPatch } from './externalTranscodePlayer.js';
 import type { StashScene } from './types.js';
 import type { PluginSettings } from './types.js';
 
-const defaultSettings: PluginSettings = {
-  externalTranscodeBaseUrl: 'https://video.home',
-  playbackMode: 'direct',
-  directPathPattern: '/stash/scene/{id}/direct',
-  hlsPathPattern: '/stash/scene/{id}/master.m3u8',
-  probeBeforeReplace: true,
-  fallbackToStashPlayer: true,
-  sharedToken: '',
-  debug: false,
-};
-
-function normalizeSettings(settings: Partial<PluginSettings> | undefined): PluginSettings {
-  return {
-    ...defaultSettings,
-    ...settings,
-    playbackMode: settings?.playbackMode === 'hls' ? 'hls' : 'direct',
-  };
-}
-
 type ScenePlayerProps = {
   scene?: StashScene;
-  settings?: Partial<PluginSettings>;
-  pluginSettings?: Partial<PluginSettings>;
+  settings?: Partial<PluginSettings> | null;
+  pluginSettings?: Partial<PluginSettings> | null;
 } & Record<string, unknown>;
 
 PluginApi.patch.instead(
@@ -38,7 +19,7 @@ PluginApi.patch.instead(
     return React.createElement(ScenePlayerPatch, {
       ...props,
       originalComponent: original,
-      settings: normalizeSettings(props?.settings ?? props?.pluginSettings),
+      settings: props?.settings ?? props?.pluginSettings,
     });
   }
 );
