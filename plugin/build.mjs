@@ -44,9 +44,9 @@ execFileSync('zip', ['-qr', path.join(packageDir, packageFile), '.'], {
 
 const zipBuffer = await readFile(path.join(packageDir, packageFile));
 const sha256 = createHash('sha256').update(zipBuffer).digest('hex');
-const today = new Date().toISOString().slice(0, 10);
+const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 await writeFile(
   path.join(sourceRoot, 'index.yml'),
-  `- id: ${packageName}\n  name: External Transcode Player\n  version: ${version}\n  date: ${today}\n  path: packages/${packageFile}\n  sha256: ${sha256}\n  metadata:\n    manifest: externalTranscodePlayer.yml\n`
+  `- id: ${packageName}\n  name: External Transcode Player\n  version: ${version}\n  date: ${now}\n  path: packages/${packageFile}\n  sha256: ${sha256}\n  metadata:\n    manifest: externalTranscodePlayer.yml\n`
 );
