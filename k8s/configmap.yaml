@@ -13,4 +13,4 @@ data:
   FFMPEG_PATH: "/usr/bin/ffmpeg"
   HWACCEL: "auto"
   PORT: "8080"
-  CORS_ALLOWED_ORIGINS: "https://stash.home"
+  CORS_ALLOWED_ORIGINS: "*"

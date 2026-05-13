@@ -52,6 +52,25 @@ describe('HLSStream', () => {
     expect(playlist).toContain('720p transcoding in progress');
   });
 
+  it('should rewrite variant playlist segment URIs to absolute variant paths', async () => {
+    const sceneDir = path.join(tmpDir, 'scene-123', '720p');
+    await fs.promises.mkdir(sceneDir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(sceneDir, 'master.m3u8'),
+      ['#EXTM3U', '#EXTINF:4.000,', 'segment_000.ts'].join('\n')
+    );
+
+    const playlist = await hlsStream.getVariantPlaylist(
+      'scene-123',
+      '720p',
+      '/input/video.mkv'
+    );
+
+    expect(playlist).toContain(
+      '/stash/scene/scene-123/variant/720p/segment_000.ts'
+    );
+  });
+
   it('should prevent path traversal in segment names', async () => {
     const result = await hlsStream.getSegment(
       'scene-123',

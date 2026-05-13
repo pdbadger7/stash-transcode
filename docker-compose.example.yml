@@ -34,7 +34,7 @@ services:
       HWACCEL: auto
       PORT: 8080
       AGENT_SHARED_TOKEN: ${AGENT_SHARED_TOKEN:-}
-      CORS_ALLOWED_ORIGINS: https://stash.home
+      CORS_ALLOWED_ORIGINS: "*"
     restart: unless-stopped
     # Uncomment if using local Stash:
     # depends_on:

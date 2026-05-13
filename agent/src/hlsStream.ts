@@ -98,7 +98,11 @@ export class HLSStream {
 
     if (existsSync(playlistPath)) {
       const playlist = await fs.readFile(playlistPath, 'utf-8');
-      return this.rewritePlaylistUris(playlist, token);
+      return this.rewritePlaylistUris(
+        playlist,
+        token,
+        `/stash/scene/${sceneId}/variant/${profile.id}`
+      );
     }
 
     if (!this.activeTranscodes.has(key) && !this.launchingTranscodes.has(key)) {
@@ -372,7 +376,11 @@ export class HLSStream {
     return `${lines.join('\n')}\n`;
   }
 
-  private rewritePlaylistUris(playlist: string, token?: string): string {
+  private rewritePlaylistUris(
+    playlist: string,
+    token?: string,
+    basePath?: string
+  ): string {
     return playlist
       .split('\n')
       .map((line) => {
@@ -380,7 +388,12 @@ export class HLSStream {
           return line;
         }
 
-        return this.withToken(line, token);
+        let uri = line;
+        if (basePath && !uri.startsWith('/') && !uri.includes('://')) {
+          uri = path.posix.join(basePath, uri);
+        }
+
+        return this.withToken(uri, token);
       })
       .join('\n');
   }

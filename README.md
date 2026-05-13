@@ -217,7 +217,7 @@ PORT=8080
 
 # Security
 AGENT_SHARED_TOKEN=optional-secret          # If set, requests must include token
-CORS_ALLOWED_ORIGINS=https://stash.home     # Comma-separated list
+CORS_ALLOWED_ORIGINS=*                      # Optional: "*" (or unset) allows all origins dynamically
 ```
 
 ### Path Mapping Examples
@@ -409,10 +409,11 @@ The agent validates:
 
 ### CORS Policy
 
-Configure `CORS_ALLOWED_ORIGINS` to restrict requests to your Stash instance:
+By default, the agent allows all origins dynamically (no host hardcoding).  
+Optionally set `CORS_ALLOWED_ORIGINS` to a comma-separated allowlist if you want to restrict it:
 
 ```bash
-CORS_ALLOWED_ORIGINS=https://stash.home
+CORS_ALLOWED_ORIGINS=https://stash.home,https://stash.example.com
 ```
 
 ## Troubleshooting
@@ -445,6 +446,7 @@ CORS_ALLOWED_ORIGINS=https://stash.home
 2. Check Content-Type header is correct (should be video/* for direct)
 3. Try direct curl test: `curl http://video.home/stash/scene/1/direct`
 4. Verify player supports video codec (check devtools Network tab)
+5. If you see a CSP `media-src` error for an external URL, switch plugin playback mode to `hls` and reinstall/update the plugin package so the manifest `ui.csp.connect-src` override is applied
 
 ### Build fails
 

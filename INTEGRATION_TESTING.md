@@ -225,7 +225,7 @@ this.httpsAgent = insecureTls ? new https.Agent({ rejectUnauthorized: false }) :
 - **Agent won't start**: Check environment variables, especially `STASH_API_KEY`
 - **GraphQL errors**: Verify Stash URL and API key. If using self-signed cert, set `STASH_INSECURE_TLS=true`
 - **Path mapping fails**: Check `PATH_MAPPINGS` format and `MEDIA_ROOT`
-- **CORS errors**: Verify `CORS_ALLOWED_ORIGINS` includes Stash URL
+- **CORS errors**: Leave `CORS_ALLOWED_ORIGINS` unset or set it to `*` to allow all origins dynamically; use a comma-separated list only when you intentionally want an allowlist
 - **HLS errors**: Check FFmpeg is installed (`which ffmpeg`), verify `/cache/hls` is writable
 - **No segments generated**: Check FFmpeg logs, ensure input file is valid media format
 - **Segments not serving**: Verify path traversal prevention (check logs if DEBUG=true)

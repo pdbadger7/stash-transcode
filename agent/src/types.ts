@@ -2,19 +2,11 @@ export interface StashScene {
   id: string;
   title: string;
   files: StashFile[];
-  duration?: number;
-  width?: number;
-  height?: number;
 }
 
 export interface StashFile {
   id: string;
   path: string;
-  duration?: number;
-  videoCodec?: string;
-  audioCodec?: string;
-  width?: number;
-  height?: number;
 }
 
 export interface ProbeResponse {
@@ -42,7 +34,7 @@ export interface Config {
   hwaccel: 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
   port: number;
   agentSharedToken?: string;
-  corsAllowedOrigins: string[];
+  corsAllowedOrigins: true | string[];
 }
 
 export interface RangeRequest {

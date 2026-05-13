@@ -26,8 +26,19 @@ const configSchema = z.object({
   agentSharedToken: z.string().optional(),
   corsAllowedOrigins: z
     .string()
-    .transform((s) => s.split(',').map((o) => o.trim()))
-    .default('https://stash.home'),
+    .optional()
+    .transform((s) => {
+      if (!s || s.trim() === '' || s.trim() === '*') {
+        return true;
+      }
+
+      const origins = s
+        .split(',')
+        .map((o) => o.trim())
+        .filter((o) => o.length > 0);
+
+      return origins.length > 0 ? origins : true;
+    }),
 });
 
 export function loadConfig(): Config {
