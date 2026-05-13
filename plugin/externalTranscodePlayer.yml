@@ -8,45 +8,44 @@ author: Stash External Transcode
 settings:
   externalTranscodeBaseUrl:
     displayName: External Transcoder Base URL
-    description: Base URL of the external transcoding agent
+    description: Base URL of the external transcoding agent, including scheme (for example, https://video.home)
     type: STRING
 
   playbackMode:
     displayName: Playback Mode
-    description: How to play video (HLS streaming or direct download)
+    description: Set to direct for MP4-style direct playback or hls for HLS streaming
     type: STRING
 
   directPathPattern:
     displayName: Direct Playback Path Pattern
-    description: URL path pattern for direct playback (use {id} for scene ID)
+    description: URL path pattern for direct playback; use {id} for the scene ID
     type: STRING
 
   hlsPathPattern:
     displayName: HLS Playback Path Pattern
-    description: URL path pattern for HLS master manifest (use {id} for scene ID)
+    description: URL path pattern for the HLS master manifest; use {id} for the scene ID
     type: STRING
 
   probeBeforeReplace:
     displayName: Probe External Agent
-    description: Check if external agent is available before replacing player
+    description: Check whether the external agent is available before replacing the player
     type: BOOLEAN
 
   fallbackToStashPlayer:
     displayName: Fallback to Stash Player
     description: >
-      Fall back to original Stash player if external agent unavailable or on error
+      Fall back to the original Stash player if the external agent is unavailable or errors
     type: BOOLEAN
 
   sharedToken:
     displayName: Shared Authentication Token
     description: >
-      Optional token to include in requests to external agent.
-      Leave empty for no authentication.
+      Optional token to include in requests to the external agent. Leave empty for no authentication.
     type: STRING
 
   debug:
     displayName: Debug Logging
-    description: Enable detailed console logging
+    description: Enable detailed console logging for troubleshooting
     type: BOOLEAN
 
 ui:

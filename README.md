@@ -128,9 +128,12 @@ stash-external-transcode/
 4. Configure plugin settings:
    - **External Transcoder Base URL**: `https://video.home` (or your agent URL)
    - **Playback Mode**: `direct` (for MVP)
+   - **Direct Playback Path Pattern**: `/stash/scene/{id}/direct`
+   - **HLS Playback Path Pattern**: `/stash/scene/{id}/master.m3u8`
    - **Probe Before Replace**: `true`
    - **Fallback to Stash Player**: `true`
    - **Shared Token**: Optional, set if agent requires authentication
+   - **Debug Logging**: `false`
 
 ### Step 3: Deploy the Agent
 
