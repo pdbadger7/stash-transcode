@@ -49,3 +49,12 @@ export interface RangeRequest {
   start?: number;
   end?: number;
 }
+
+export interface HLSProfile {
+  id: string;
+  label: string;
+  width: number;
+  height: number;
+  videoBitrateKbps: number;
+  bandwidthKbps: number;
+}

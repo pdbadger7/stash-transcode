@@ -1,14 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import { React } from './runtime.js';
 import {
   buildPlaybackUrl,
   probeExternalAgent,
 } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
-import type { StashScene, PluginSettings } from './types.js';
+import type {
+  PlaybackQualityId,
+  StashScene,
+  PluginSettings,
+} from './types.js';
+
+const { useState, useEffect, useMemo } = React;
+
+const DEFAULT_SETTINGS: PluginSettings = {
+  externalTranscodeBaseUrl: 'https://video.home',
+  playbackMode: 'direct',
+  directPathPattern: '/stash/scene/{id}/direct',
+  hlsPathPattern: '/stash/scene/{id}/master.m3u8',
+  probeBeforeReplace: true,
+  fallbackToStashPlayer: true,
+  sharedToken: '',
+  debug: false,
+};
+
+function normalizeSettings(
+  settings?: Partial<PluginSettings> | null
+): PluginSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    ...settings,
+    playbackMode: settings?.playbackMode === 'hls' ? 'hls' : 'direct',
+  };
+}
 
 interface ScenePlayerPatchProps {
   scene?: StashScene;
-  originalComponent: React.ComponentType<any>;
+  originalComponent: React.ComponentType<Record<string, unknown>>;
   settings: PluginSettings;
 }
 
@@ -21,39 +48,56 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   originalComponent: OriginalPlayer,
   settings,
 }) => {
+  const resolvedSettings = useMemo(() => normalizeSettings(settings), [settings]);
   const [useExternal, setUseExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [quality, setQuality] = useState<PlaybackQualityId>('auto');
 
-  if (settings.debug) {
+  useEffect(() => {
+    setQuality('auto');
+  }, [scene?.id]);
+
+  if (resolvedSettings.debug) {
     console.log('[ScenePlayerPatch] Rendering with scene:', scene?.id);
   }
 
   // Initialize external player on mount or when scene changes
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     if (!scene?.id) {
-      if (settings.debug) console.log('[ScenePlayerPatch] No scene ID');
+      if (resolvedSettings.debug) console.log('[ScenePlayerPatch] No scene ID');
       setUseExternal(false);
-      return;
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
     }
 
     const initializeExternalPlayer = async () => {
       try {
         // Probe if enabled
-        if (settings.probeBeforeReplace) {
-          if (settings.debug)
+        if (resolvedSettings.probeBeforeReplace) {
+          if (resolvedSettings.debug)
             console.log(`[ScenePlayerPatch] Probing scene ${scene.id}`);
           const probeResult = await probeExternalAgent(
-            settings.externalTranscodeBaseUrl,
+            resolvedSettings.externalTranscodeBaseUrl,
             scene.id,
-            settings.sharedToken
+            resolvedSettings.sharedToken,
+            controller.signal
           );
 
+          if (cancelled) {
+            return;
+          }
+
           if (!probeResult.ok) {
-            if (settings.debug)
+            if (resolvedSettings.debug)
               console.log('[ScenePlayerPatch] Probe failed:', probeResult.error);
 
-            if (settings.fallbackToStashPlayer) {
+            if (resolvedSettings.fallbackToStashPlayer) {
               setUseExternal(false);
               setError(null);
               return;
@@ -67,29 +111,38 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
         // Build playback URL
         const pathPattern =
-          settings.playbackMode === 'hls'
-            ? settings.hlsPathPattern
-            : settings.directPathPattern;
+          resolvedSettings.playbackMode === 'hls'
+            ? resolvedSettings.hlsPathPattern
+            : resolvedSettings.directPathPattern;
 
         const url = buildPlaybackUrl(
-          settings.externalTranscodeBaseUrl,
+          resolvedSettings.externalTranscodeBaseUrl,
           pathPattern,
           scene.id,
-          settings.sharedToken
+          resolvedSettings.sharedToken,
+          quality
         );
 
-        if (settings.debug)
+        if (cancelled) {
+          return;
+        }
+
+        if (resolvedSettings.debug)
           console.log('[ScenePlayerPatch] Using external player:', url);
 
         setPlaybackUrl(url);
         setUseExternal(true);
         setError(null);
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
         const message =
           err instanceof Error ? err.message : 'Unknown error';
         console.error('[ScenePlayerPatch] Error:', message);
 
-        if (settings.fallbackToStashPlayer) {
+        if (resolvedSettings.fallbackToStashPlayer) {
           setUseExternal(false);
           setError(null);
         } else {
@@ -100,14 +153,18 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
     };
 
     initializeExternalPlayer();
-  }, [scene?.id, settings]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [scene?.id, quality, resolvedSettings]);
 
   // Handle playback error
   const handlePlaybackError = (err: Error) => {
     console.error('[ScenePlayerPatch] Playback error:', err.message);
 
-    if (settings.fallbackToStashPlayer) {
-      if (settings.debug)
+    if (resolvedSettings.fallbackToStashPlayer) {
+      if (resolvedSettings.debug)
         console.log('[ScenePlayerPatch] Falling back to original player');
       setUseExternal(false);
       setError(null);
@@ -117,7 +174,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   };
 
   // Show error or use external player
-  if (error && !settings.fallbackToStashPlayer) {
+  if (error && !resolvedSettings.fallbackToStashPlayer) {
     return (
       <div
         style={{
@@ -143,15 +200,17 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
     return (
       <ExternalVideoPlayer
         url={playbackUrl}
-        mode={settings.playbackMode}
+        mode={resolvedSettings.playbackMode}
         title={scene?.title}
-        debug={settings.debug}
+        debug={resolvedSettings.debug}
+        selectedQuality={quality}
+        onQualityChange={setQuality}
         onError={handlePlaybackError}
       />
     );
   }
 
   // Fall back to original Stash player
-  if (settings.debug) console.log('[ScenePlayerPatch] Using original player');
+  if (resolvedSettings.debug) console.log('[ScenePlayerPatch] Using original player');
   return React.createElement(OriginalPlayer);
 };
