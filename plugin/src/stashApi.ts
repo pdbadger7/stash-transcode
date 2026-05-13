@@ -1,20 +1,5 @@
 import type { ProbeResponse } from './types.js';
 
-type HlsErrorData = {
-  type?: string;
-};
-
-export type HlsInstance = {
-  attachMedia: (video: HTMLVideoElement) => void;
-  on: (event: string, callback: (_: unknown, data: HlsErrorData) => void) => void;
-  loadSource: (url: string) => void;
-  destroy?: () => void;
-};
-
-type HlsConstructor = {
-  new (): HlsInstance;
-};
-
 /**
  * Build a playback URL for the external agent
  */
@@ -78,17 +63,6 @@ export async function probeExternalAgent(
         error instanceof Error ? error.message : 'Probe failed',
     };
   }
-}
-
-/**
- * Test if HLS.js is available
- */
-export function hasHlsJs(): boolean {
-  return getHlsConstructor() !== undefined;
-}
-
-export function getHlsConstructor(): HlsConstructor | undefined {
-  return (window as Window & { Hls?: HlsConstructor }).Hls;
 }
 
 /**

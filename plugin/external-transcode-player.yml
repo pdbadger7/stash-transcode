@@ -48,5 +48,9 @@ settings:
     type: BOOLEAN
 
 ui:
+  csp:
+    connect-src:
+      - https:
+      - http:
   javascript:
     - externalTranscodePlayer.js

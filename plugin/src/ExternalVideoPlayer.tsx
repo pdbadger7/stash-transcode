@@ -1,10 +1,6 @@
 import { React } from './runtime.js';
-import {
-  getHlsConstructor,
-  hasHlsJs,
-  hasNativeHls,
-  type HlsInstance,
-} from './stashApi.js';
+import Hls from 'hls.js';
+import { hasNativeHls } from './stashApi.js';
 import { PLAYBACK_QUALITIES, type PlaybackQualityId } from './types.js';
 
 const { useRef, useEffect, useState } = React;
@@ -35,49 +31,56 @@ export const ExternalVideoPlayer: React.FC<ExternalVideoPlayerProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const isCrossOrigin =
+    (() => {
+      try {
+        return new URL(url, window.location.href).origin !== window.location.origin;
+      } catch {
+        return false;
+      }
+    })();
 
   useEffect(() => {
     if (debug) {
       console.log('[ExternalVideoPlayer] Rendering', {
         url,
         mode,
-        hasHlsJs: hasHlsJs(),
+        hasHlsJs: Hls.isSupported(),
         hasNativeHls: hasNativeHls(),
+        isCrossOrigin,
       });
     }
-  }, [url, mode, debug]);
+  }, [url, mode, debug, isCrossOrigin]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     setError(null);
 
-    let hlsInstance: HlsInstance | null = null;
+    let hlsInstance: Hls | null = null;
 
     if (mode === 'hls') {
-      if (hasNativeHls()) {
-        // Use native HLS support (iOS/Safari)
-        if (debug) console.log('[ExternalVideoPlayer] Using native HLS');
-        video.src = url;
-      } else if (hasHlsJs()) {
-        // Use hls.js for browsers that need it
+      if (Hls.isSupported()) {
+        // Prefer hls.js so playlists/segments are fetched via connect-src and
+        // appended to a blob: media source that is allowed by Stash CSP.
         if (debug) console.log('[ExternalVideoPlayer] Using hls.js');
-        const Hls = getHlsConstructor();
-        if (!Hls) {
-          const msg = 'HLS support not available';
-          console.warn('[ExternalVideoPlayer]', msg);
-          setError(msg);
-          onError?.(new Error(msg));
-          return;
-        }
         hlsInstance = new Hls();
         hlsInstance.attachMedia(video);
-        hlsInstance.on('hlsError', (_: unknown, data: { type?: string }) => {
+        hlsInstance.on(Hls.Events.ERROR, (_: unknown, data: { type?: string }) => {
           console.error('[ExternalVideoPlayer] HLS error:', data);
           setError(`HLS Error: ${data.type}`);
           onError?.(new Error(`HLS Error: ${data.type}`));
         });
         hlsInstance.loadSource(url);
+      } else if (!isCrossOrigin && hasNativeHls()) {
+        if (debug) console.log('[ExternalVideoPlayer] Using native HLS');
+        video.src = url;
+      } else if (isCrossOrigin && hasNativeHls()) {
+        const msg =
+          'Native HLS is blocked by Stash CSP for cross-origin media. Enable hls.js-compatible playback.';
+        console.warn('[ExternalVideoPlayer]', msg);
+        setError(msg);
+        onError?.(new Error(msg));
       } else {
         // No HLS support
         const msg = 'HLS support not available';
@@ -86,6 +89,14 @@ export const ExternalVideoPlayer: React.FC<ExternalVideoPlayerProps> = ({
         onError?.(new Error(msg));
       }
     } else {
+      if (isCrossOrigin) {
+        const msg =
+          'Direct external playback is blocked by Stash CSP media-src. Use HLS playback mode.';
+        console.warn('[ExternalVideoPlayer]', msg);
+        setError(msg);
+        onError?.(new Error(msg));
+        return;
+      }
       // Direct playback
       if (debug) console.log('[ExternalVideoPlayer] Direct playback');
       video.src = url;
