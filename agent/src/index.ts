@@ -1,11 +1,11 @@
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
-import { promises as fs } from 'fs';
+import { constants as fsConstants, promises as fs } from 'fs';
 import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
-import { HLSStream } from './hlsStream.js';
+import { DEFAULT_HLS_PROFILES, HLSStream } from './hlsStream.js';
 import {
   parseRangeHeader,
   getFileSize,
@@ -30,6 +30,27 @@ const hlsStream = new HLSStream({
   enableDebug: process.env.DEBUG === 'true',
 });
 
+async function resolveSceneInputPath(sceneId: string): Promise<string | null> {
+  const scene = await stashClient.getScene(sceneId);
+  if (!scene || !scene.files || scene.files.length === 0) {
+    return null;
+  }
+
+  const file = scene.files[0];
+  const mappingResult = pathMapper.map(file.path);
+  if (!mappingResult.success || !mappingResult.path) {
+    return null;
+  }
+
+  try {
+    await fs.access(mappingResult.path, fsConstants.R_OK);
+  } catch {
+    return null;
+  }
+
+  return mappingResult.path;
+}
+
 const app = Fastify({
   logger: true,
 });
@@ -46,7 +67,7 @@ app.get('/health', async () => {
 });
 
 // Probe endpoint - check if scene can be served
-app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
+app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: string } }>(
   '/stash/scene/:id/probe',
   async (request, reply) => {
     const { id } = request.params;
@@ -193,7 +214,7 @@ app.get<{
 );
 
 // HLS master.m3u8 endpoint
-app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
+app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: string } }>(
   '/stash/scene/:id/master.m3u8',
   async (request, reply) => {
     const { id } = request.params;
@@ -204,33 +225,20 @@ app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
     }
 
     try {
-      const scene = await stashClient.getScene(id);
-      if (!scene) {
+      const inputPath = await resolveSceneInputPath(id);
+      if (!inputPath) {
         return reply.code(404).send({ ok: false, error: 'Scene not found' });
       }
 
-      if (!scene.files || scene.files.length === 0) {
-        return reply
-          .code(400)
-          .send({ ok: false, error: 'Scene has no files' });
-      }
-
-      const filePath = scene.files[0].path;
-      const mapResult = pathMapper.map(filePath);
-
-      if (!mapResult.success || !mapResult.path) {
-        return reply
-          .code(400)
-          .send({
-            ok: false,
-            error: mapResult.error || 'Path mapping failed',
-          });
-      }
-
-      const playlist = await hlsStream.getMasterPlaylist(id, mapResult.path);
+      const playlist = await hlsStream.getMasterPlaylist(
+        id,
+        inputPath,
+        request.query.quality,
+        token
+      );
 
       reply
-        .header('Content-Type', 'application/vnd.apple.mpegurl')
+        .header('Content-Type', hlsStream.getPlaylistMimeType())
         .header('Cache-Control', 'no-cache')
         .send(playlist);
     } catch (err) {
@@ -243,21 +251,56 @@ app.get<{ Params: { id: string }; Querystring: { token?: string } }>(
   }
 );
 
+app.get<{
+  Params: { id: string; profile: string };
+  Querystring: { token?: string };
+}>('/stash/scene/:id/variant/:profile/master.m3u8', async (request, reply) => {
+  const { id, profile } = request.params;
+  const { token } = request.query;
+
+  if (!authValidator.validateQueryToken(token)) {
+    return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const inputPath = await resolveSceneInputPath(id);
+    if (!inputPath) {
+      return reply.code(404).send({ ok: false, error: 'Scene not found' });
+    }
+
+    const playlist = await hlsStream.getVariantPlaylist(
+      id,
+      profile,
+      inputPath,
+      token
+    );
+    reply
+      .header('Content-Type', hlsStream.getPlaylistMimeType())
+      .header('Cache-Control', 'no-cache')
+      .send(playlist);
+  } catch (err) {
+    console.error(`Failed to generate variant playlist for scene ${id}:`, err);
+    return reply.code(404).send({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to generate variant',
+    });
+  }
+});
+
 // HLS segment endpoint
 app.get<{
-  Params: { id: string; segmentName: string };
+  Params: { id: string; profile: string; segmentName: string };
   Querystring: { token?: string };
 }>(
-  '/stash/scene/:id/segment/:segmentName',
+  '/stash/scene/:id/variant/:profile/:segmentName',
   async (request, reply) => {
-    const { id, segmentName } = request.params;
+    const { id, profile, segmentName } = request.params;
     const { token } = request.query;
 
     if (!authValidator.validateQueryToken(token)) {
       return reply.code(403).send({ ok: false, error: 'Unauthorized' });
     }
 
-    // Security: prevent directory traversal
     if (segmentName.includes('..') || segmentName.startsWith('/')) {
       return reply.code(400).send({
         ok: false,
@@ -266,23 +309,19 @@ app.get<{
     }
 
     try {
-      const segment = await hlsStream.getSegment(id, segmentName);
+      const segment = await hlsStream.getSegment(id, profile, segmentName);
 
       if (!segment) {
         return reply.code(404).send({ ok: false, error: 'Segment not found' });
       }
 
-      const contentType = segmentName.endsWith('.ts')
-        ? 'video/mp2t'
-        : 'application/octet-stream';
-
       reply
-        .header('Content-Type', contentType)
+        .header('Content-Type', hlsStream.getSegmentMimeType(segmentName))
         .header('Cache-Control', 'public, max-age=3600')
         .send(segment);
     } catch (err) {
       console.error(
-        `Failed to serve segment ${segmentName} for scene ${id}:`,
+        `Failed to serve segment ${segmentName} for scene ${id}/${profile}:`,
         err
       );
       return reply.code(500).send({
@@ -292,6 +331,45 @@ app.get<{
     }
   }
 );
+
+app.get<{
+  Params: { id: string; segmentName: string };
+  Querystring: { token?: string };
+}>('/stash/scene/:id/segment/:segmentName', async (request, reply) => {
+  const { id, segmentName } = request.params;
+  const { token } = request.query;
+
+  if (!authValidator.validateQueryToken(token)) {
+    return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+  }
+
+  if (segmentName.includes('..') || segmentName.startsWith('/')) {
+    return reply.code(400).send({
+      ok: false,
+      error: 'Invalid segment name',
+    });
+  }
+
+  try {
+    const fallbackProfile = DEFAULT_HLS_PROFILES[1]?.id ?? DEFAULT_HLS_PROFILES[0].id;
+    const segment = await hlsStream.getSegment(id, fallbackProfile, segmentName);
+
+    if (!segment) {
+      return reply.code(404).send({ ok: false, error: 'Segment not found' });
+    }
+
+    reply
+      .header('Content-Type', hlsStream.getSegmentMimeType(segmentName))
+      .header('Cache-Control', 'public, max-age=3600')
+      .send(segment);
+  } catch (err) {
+    console.error(`Failed to serve segment ${segmentName} for scene ${id}:`, err);
+    return reply.code(500).send({
+      ok: false,
+      error: 'Failed to serve segment',
+    });
+  }
+});
 
 // Cleanup old transcodes periodically (every 30 minutes)
 setInterval(() => {

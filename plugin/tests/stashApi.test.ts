@@ -29,4 +29,15 @@ describe('Stash API Utilities', () => {
     );
     expect(url).toContain('token=secret-token');
   });
+
+  it('should include quality preference in query string', () => {
+    const url = buildPlaybackUrl(
+      'https://video.home',
+      '/stash/scene/{id}/master.m3u8',
+      '321',
+      undefined,
+      '720p'
+    );
+    expect(url).toContain('quality=720p');
+  });
 });

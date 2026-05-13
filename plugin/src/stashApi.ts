@@ -1,4 +1,19 @@
-import type { PluginSettings, ProbeResponse } from './types.js';
+import type { ProbeResponse } from './types.js';
+
+type HlsErrorData = {
+  type?: string;
+};
+
+export type HlsInstance = {
+  attachMedia: (video: HTMLVideoElement) => void;
+  on: (event: string, callback: (_: unknown, data: HlsErrorData) => void) => void;
+  loadSource: (url: string) => void;
+  destroy?: () => void;
+};
+
+type HlsConstructor = {
+  new (): HlsInstance;
+};
 
 /**
  * Build a playback URL for the external agent
@@ -7,7 +22,8 @@ export function buildPlaybackUrl(
   baseUrl: string,
   pathPattern: string,
   sceneId: string,
-  token?: string
+  token?: string,
+  quality?: string
 ): string {
   const url = new URL(baseUrl);
   const path = pathPattern.replace('{id}', sceneId);
@@ -15,6 +31,10 @@ export function buildPlaybackUrl(
 
   if (token) {
     url.searchParams.set('token', token);
+  }
+
+  if (quality && quality !== 'auto') {
+    url.searchParams.set('quality', quality);
   }
 
   return url.toString();
@@ -26,7 +46,8 @@ export function buildPlaybackUrl(
 export async function probeExternalAgent(
   baseUrl: string,
   sceneId: string,
-  token?: string
+  token?: string,
+  signal?: AbortSignal
 ): Promise<ProbeResponse> {
   try {
     const url = new URL(baseUrl);
@@ -38,6 +59,7 @@ export async function probeExternalAgent(
     const response = await fetch(url.toString(), {
       method: 'GET',
       credentials: 'include',
+      signal,
     });
 
     if (!response.ok) {
@@ -62,7 +84,11 @@ export async function probeExternalAgent(
  * Test if HLS.js is available
  */
 export function hasHlsJs(): boolean {
-  return typeof window !== 'undefined' && (window as any).Hls !== undefined;
+  return getHlsConstructor() !== undefined;
+}
+
+export function getHlsConstructor(): HlsConstructor | undefined {
+  return (window as Window & { Hls?: HlsConstructor }).Hls;
 }
 
 /**

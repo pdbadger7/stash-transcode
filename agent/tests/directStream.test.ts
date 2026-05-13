@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRangeHeader } from '../src/directStream.js';
+import { getMimeType, parseRangeHeader } from '../src/directStream.js';
 
 describe('DirectStream Range Parsing', () => {
   const fileSize = 10000;
@@ -39,5 +39,10 @@ describe('DirectStream Range Parsing', () => {
     const result = parseRangeHeader('bytes=5000-999999', fileSize);
     expect(result.success).toBe(true);
     expect(result.end).toBe(9999);
+  });
+
+  it('should detect hls mime types', () => {
+    expect(getMimeType('playlist.m3u8')).toBe('application/vnd.apple.mpegurl');
+    expect(getMimeType('segment.ts')).toBe('video/mp2t');
   });
 });

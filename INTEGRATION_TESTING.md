@@ -109,9 +109,12 @@ ls -la /cache/hls/123/
 
 ### 7. Install Stash Plugin
 
-1. Copy plugin files to Stash plugins directory
-2. Restart Stash
-3. Enable in Settings → Plugins
+1. Open **Settings → Plugins** in Stash
+2. Add a plugin source URL:
+   ```text
+   https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/plugin-source/index.yml
+   ```
+3. Install **External Transcode Player** from the source
 4. Configure plugin settings
 
 ### 8. Test in Stash UI

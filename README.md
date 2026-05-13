@@ -59,7 +59,7 @@ stash-external-transcode/
 ├── package.json
 ├── docker-compose.example.yml
 ├── plugin/
-│   ├── externalTranscodePlayer.yml     # Plugin manifest
+│   ├── externalTranscodePlayer.yml     # Stash plugin manifest
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── tests/
@@ -67,8 +67,14 @@ stash-external-transcode/
 │   └── src/
 │       ├── types.ts
 │       ├── stashApi.ts
+│       ├── runtime.ts
+│       ├── index.ts
 │       ├── ExternalVideoPlayer.tsx
 │       └── externalTranscodePlayer.tsx
+├── plugin-source/
+│   ├── index.yml                      # Stash UI plugin source index
+│   └── packages/
+│       └── external-transcode-player-0.1.0.zip
 ├── agent/
 │   ├── Dockerfile
 │   ├── package.json
@@ -113,21 +119,12 @@ stash-external-transcode/
 
 ### Step 2: Install the Stash UI Plugin
 
-1. Download the plugin:
-   ```bash
-   # Copy the plugin files to your Stash plugins directory
-   # Typically: ~/.stash/plugins/externalTranscodePlayer/
+1. Open Stash and go to **Settings → Plugins**
+2. Under **Available Plugins**, add a new source with this URL:
+   ```text
+   https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/plugin-source/index.yml
    ```
-
-2. Create the plugin directory structure:
-   ```bash
-   mkdir -p ~/.stash/plugins/externalTranscodePlayer
-   cp plugin/externalTranscodePlayer.yml ~/.stash/plugins/externalTranscodePlayer/
-   cp plugin/src/* ~/.stash/plugins/externalTranscodePlayer/
-   ```
-
-3. Restart Stash and enable the plugin in Settings → Plugins
-
+3. Install **External Transcode Player** from that source
 4. Configure plugin settings:
    - **External Transcoder Base URL**: `https://video.home` (or your agent URL)
    - **Playback Mode**: `direct` (for MVP)
@@ -295,18 +292,26 @@ Returns HTTP 206 (Partial Content) for Range requests.
 
 ### GET /stash/scene/:id/master.m3u8
 
-HLS master manifest (Phase 2).
+Adaptive HLS master manifest.
 
 ```bash
-curl 'https://video.home/stash/scene/123/master.m3u8?token=secret'
+curl 'https://video.home/stash/scene/123/master.m3u8?token=secret&quality=720p'
 ```
 
-### GET /stash/scene/:id/segment/:segmentName
+### GET /stash/scene/:id/variant/:profile/master.m3u8
 
-HLS segment file (Phase 2).
+Profile-specific media playlist.
 
 ```bash
-curl 'https://video.home/stash/scene/123/segment/segment_000.ts?token=secret'
+curl 'https://video.home/stash/scene/123/variant/720p/master.m3u8?token=secret'
+```
+
+### GET /stash/scene/:id/variant/:profile/:segmentName
+
+Profile-specific HLS segment file.
+
+```bash
+curl 'https://video.home/stash/scene/123/variant/720p/segment_000.ts?token=secret'
 ```
 
 ## Testing
@@ -450,34 +455,30 @@ npm -w plugin run test
 
 ## Known Limitations
 
-1. **Plugin Distribution**: Plugin is distributed as YAML + TypeScript source. Stash UI plugin system requires client-side JavaScript — no build output is committed.
+1. **Plugin Distribution**: Stash installs the plugin from `plugin-source/index.yml`, which points at a packaged zip containing the manifest and browser bundle.
 
-2. **HLS Not Yet Implemented**: Phase 2 work. Direct playback MVP is functional.
+2. **No Resume Sync**: Playback position is not synced back to Stash. Implemented as local browser storage only.
 
-3. **No Quality Selector**: Single-quality output. Adaptive bitrate HLS is future work.
+3. **No Authentication System**: Uses basic shared token. Not suitable for multi-user or internet-facing deployments.
 
-4. **No Resume Sync**: Playback position is not synced back to Stash. Implemented as local browser storage only.
+4. **Stash Version**: Built for Stash v3. GraphQL schema may vary by version — query may need adjustment.
 
-5. **No Authentication System**: Uses basic shared token. Not suitable for multi-user or internet-facing deployments.
-
-6. **Stash Version**: Built for Stash v3. GraphQL schema may vary by version — query may need adjustment.
-
-7. **Hardware Acceleration**: Placeholders only in MVP. Full VAAPI/QSV/NVENC support is Phase 2.
+5. **Quality Profiles Are Preset**: ABR and quality selection are implemented, but the built-in profiles are fixed presets for now.
 
 ## Roadmap
 
 ### Phase 2: HLS Streaming
 
-- [ ] FFmpeg-based HLS segment generation
-- [ ] Concurrent segment transcoding
-- [ ] Segment caching and cleanup
-- [ ] MIME type detection for segment selection
+- [x] FFmpeg-based HLS segment generation
+- [x] Concurrent segment transcoding
+- [x] Segment caching and cleanup
+- [x] MIME type detection for segment selection
 
 ### Phase 3: Advanced Streaming
 
-- [ ] Adaptive bitrate (ABR) with multiple quality profiles
-- [ ] Hardware acceleration (VAAPI, QSV, NVENC)
-- [ ] Quality selector UI in player
+- [x] Adaptive bitrate (ABR) with multiple quality profiles
+- [x] Hardware acceleration (VAAPI, QSV, NVENC)
+- [x] Quality selector UI in player
 
 ## Development
 
