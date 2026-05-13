@@ -4,6 +4,7 @@ import {
   probeExternalAgent,
 } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
+import { buildOriginalPlayerProps } from './playerProps.js';
 import type {
   PlaybackQualityId,
   StashScene,
@@ -213,5 +214,5 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
   // Fall back to original Stash player
   if (resolvedSettings.debug) console.log('[ScenePlayerPatch] Using original player');
-  return React.createElement(OriginalPlayer, playerProps);
+  return React.createElement(OriginalPlayer, buildOriginalPlayerProps(scene, playerProps));
 };
