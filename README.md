@@ -59,7 +59,7 @@ stash-external-transcode/
 ├── package.json
 ├── docker-compose.example.yml
 ├── plugin/
-│   ├── externalTranscodePlayer.yml     # Stash plugin manifest
+│   ├── external-transcode-player.yml   # Stash plugin manifest
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── tests/

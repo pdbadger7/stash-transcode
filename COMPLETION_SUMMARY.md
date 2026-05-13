@@ -77,7 +77,7 @@ agent/
 ### 2. Stash UI Plugin (React/TypeScript)
 ```
 plugin/
-├── externalTranscodePlayer.yml (Stash plugin manifest)
+├── external-transcode-player.yml (Stash plugin manifest)
 ├── src/
 │   ├── externalTranscodePlayer.tsx (ScenePlayer patch)
 │   ├── ExternalVideoPlayer.tsx (video player component)
@@ -238,7 +238,7 @@ stash-transcode/
 ├── plugin/ (React/TypeScript)
 │   ├── src/ (5 files, 200+ lines)
 │   ├── tests/ (1 file, 3 tests)
-│   ├── externalTranscodePlayer.yml
+│   ├── external-transcode-player.yml
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── vitest.config.ts
