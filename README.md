@@ -478,29 +478,6 @@ npm -w plugin run test
 - [ ] Adaptive bitrate (ABR) with multiple quality profiles
 - [ ] Hardware acceleration (VAAPI, QSV, NVENC)
 - [ ] Quality selector UI in player
-- [ ] Subtitle support
-
-### Phase 4: Stash Integration
-
-- [ ] Play count sync back to Stash
-- [ ] Resume position sync
-- [ ] Watched indicator in Stash UI
-- [ ] Recently watched feed
-
-### Phase 5: Security & Observability
-
-- [ ] Proper authentication system (OAuth / OIDC)
-- [ ] Signed playback sessions (short-lived)
-- [ ] Comprehensive audit logging
-- [ ] Metrics and performance monitoring
-- [ ] Rate limiting
-
-### Phase 6: Advanced Features
-
-- [ ] Chapter/bookmark support
-- [ ] Transcoding profiles (user-configurable)
-- [ ] Batch transcoding queue
-- [ ] API for external integrations
 
 ## Development
 
