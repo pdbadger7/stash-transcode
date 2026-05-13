@@ -5,20 +5,26 @@ WORKDIR /app
 # Install ffmpeg and other utilities
 RUN apk add --no-cache ffmpeg curl
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy root package files (for workspace setup)
+COPY package.json package-lock.json ./
 
-# Install dependencies
-RUN npm ci
+# Copy agent package.json
+COPY agent/package.json ./agent/
 
-# Copy source
-COPY src ./src
-COPY tsconfig.json ./
+# Install dependencies (includes agent via workspace)
+RUN npm install
 
-# Build
-RUN npm run build
+# Copy agent source
+COPY agent/src ./agent/src
+COPY agent/tsconfig.json ./agent/
 
-# Run
+# Build agent
+RUN npm -w stash-transcode-agent run build
+
+# Set working directory to agent dist
+WORKDIR /app/agent
+
+# Expose and run from root for npm start to work
 EXPOSE 8080
 
 CMD ["npm", "start"]
