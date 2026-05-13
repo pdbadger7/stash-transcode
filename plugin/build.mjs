@@ -37,6 +37,10 @@ await copyFile(
   path.join(rootDir, 'externalTranscodePlayer.yml'),
   path.join(stagingDir, 'externalTranscodePlayer.yml')
 );
+await copyFile(
+  path.join(rootDir, 'externalTranscodePlayer.yml'),
+  path.join(stagingDir, 'plugin.yml')
+);
 
 execFileSync('zip', ['-qr', path.join(packageDir, packageFile), '.'], {
   cwd: stagingDir,
@@ -48,5 +52,5 @@ const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 await writeFile(
   path.join(sourceRoot, 'index.yml'),
-  `- id: ${packageName}\n  name: External Transcode Player\n  version: ${version}\n  date: ${now}\n  path: packages/${packageFile}\n  sha256: ${sha256}\n  metadata:\n    manifest: externalTranscodePlayer.yml\n`
+  `- id: ${packageName}\n  name: External Transcode Player\n  version: ${version}\n  date: ${now}\n  path: packages/${packageFile}\n  sha256: ${sha256}\n  metadata:\n    manifest: plugin.yml\n`
 );
