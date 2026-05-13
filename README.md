@@ -122,8 +122,9 @@ stash-external-transcode/
 1. Open Stash and go to **Settings → Plugins**
 2. Under **Available Plugins**, add a new source with this URL:
    ```text
-   https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/plugin-source/index.yml
+   https://raw.githubusercontent.com/<your-user>/<your-repo>/main/plugin-source/index.yml
    ```
+   Use the branch name (`main`), not `refs/heads/main`; GitHub's raw cache can serve stale content for the longer ref path.
 3. Install **External Transcode Player** from that source
 4. Configure plugin settings:
    - **External Transcoder Base URL**: `https://video.home` (or your agent URL)
