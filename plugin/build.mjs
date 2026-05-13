@@ -8,18 +8,21 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(rootDir, '..');
 const sourceRoot = path.join(repoRoot, 'plugin-source');
+const docsRoot = path.join(repoRoot, 'docs');
 const packageDir = path.join(sourceRoot, 'packages');
 const buildDir = path.join(sourceRoot, '.build');
+const docsPackageDir = path.join(docsRoot, 'packages');
 const packageName = 'external-transcode-player';
 const version = '0.1.3';
 const packageFile = `${packageName}-${version}.zip`;
-const indexFile = `index-${version}.yml`;
 const stagingDir = path.join(buildDir, packageFile.replace(/\.zip$/, ''));
 
 await rm(buildDir, { recursive: true, force: true });
 await rm(packageDir, { recursive: true, force: true });
+await rm(docsRoot, { recursive: true, force: true });
 await mkdir(stagingDir, { recursive: true });
 await mkdir(packageDir, { recursive: true });
+await mkdir(docsPackageDir, { recursive: true });
 
 await build({
   entryPoints: [path.join(rootDir, 'src/index.ts')],
@@ -54,5 +57,12 @@ await writeFile(
 
 await copyFile(
   path.join(sourceRoot, 'index.yml'),
-  path.join(sourceRoot, indexFile)
+  path.join(docsRoot, 'index.yml')
 );
+
+await copyFile(
+  path.join(packageDir, packageFile),
+  path.join(docsPackageDir, packageFile)
+);
+
+await writeFile(path.join(docsRoot, '.nojekyll'), '');

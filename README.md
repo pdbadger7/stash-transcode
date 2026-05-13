@@ -122,9 +122,9 @@ stash-external-transcode/
 1. Open Stash and go to **Settings → Plugins**
 2. Under **Available Plugins**, add a new source with this URL:
    ```text
-   https://raw.githubusercontent.com/<your-user>/<your-repo>/main/plugin-source/index-0.1.3.yml
+   https://raw.githubusercontent.com/<your-user>/<your-repo>/main/docs/index.yml
    ```
-   Use the versioned index filename so GitHub raw does not serve a stale cached source list.
+   This is the stable plugin source URL; the file itself updates as new packages are published.
 3. Install **External Transcode Player** from that source
 4. Configure plugin settings:
    - **External Transcoder Base URL**: `https://video.home` (or your agent URL)
@@ -459,7 +459,7 @@ npm -w plugin run test
 
 ## Known Limitations
 
-1. **Plugin Distribution**: Stash installs the plugin from `plugin-source/index.yml`, which points at a packaged zip containing the manifest and browser bundle.
+1. **Plugin Distribution**: Stash installs the plugin from the published source YAML, which points at a packaged zip containing the manifest and browser bundle.
 
 2. **No Resume Sync**: Playback position is not synced back to Stash. Implemented as local browser storage only.
 

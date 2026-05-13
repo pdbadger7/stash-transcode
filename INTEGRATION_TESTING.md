@@ -112,7 +112,7 @@ ls -la /cache/hls/123/
 1. Open **Settings → Plugins** in Stash
 2. Add a plugin source URL:
    ```text
-   https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/plugin-source/index-0.1.3.yml
+   https://raw.githubusercontent.com/<your-user>/<your-repo>/<branch>/docs/index.yml
    ```
 3. Install **External Transcode Player** from the source
 4. Configure plugin settings
