@@ -21,7 +21,7 @@ const configSchema = z.object({
   agentBaseUrl: z.string().url(),
   hlsCacheDir: z.string(),
   ffmpegPath: z.string().default('/usr/bin/ffmpeg'),
-  hwaccel: z.enum(['none', 'vaapi', 'qsv', 'nvenc']).default('none'),
+  hwaccel: z.enum(['none', 'auto', 'vaapi', 'qsv', 'nvenc']).default('auto'),
   port: z.coerce.number().default(8080),
   agentSharedToken: z.string().optional(),
   corsAllowedOrigins: z
@@ -49,7 +49,7 @@ export function loadConfig(): Config {
     agentBaseUrl: env.AGENT_BASE_URL,
     hlsCacheDir: env.HLS_CACHE_DIR,
     ffmpegPath: env.FFMPEG_PATH,
-    hwaccel: env.HWACCEL || 'none',
+    hwaccel: env.HWACCEL || 'auto',
     port: env.PORT || '8080',
     agentSharedToken: env.AGENT_SHARED_TOKEN,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS,

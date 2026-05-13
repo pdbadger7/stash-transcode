@@ -25,7 +25,7 @@ const authValidator = new AuthValidator(config.agentSharedToken);
 const hlsStream = new HLSStream({
   cacheDir: config.hlsCacheDir,
   ffmpegPath: config.ffmpegPath,
-  hwaccel: config.hwaccel as 'none' | 'vaapi' | 'qsv' | 'nvenc',
+  hwaccel: config.hwaccel,
   segmentDuration: 4,
   enableDebug: process.env.DEBUG === 'true',
 });

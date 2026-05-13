@@ -48,7 +48,7 @@ A proof-of-concept system for offloading video playback from Stash to an externa
 - ✅ **Probe endpoint** to check agent availability
 - ✅ **Fallback to original player** on error
 - ✅ **HLS transcoding** with ffmpeg (Phase 2)
-- ⏳ **Hardware acceleration** support (VAAPI, QSV, NVENC)
+- ✅ **Hardware acceleration** support when available (VAAPI, QSV, NVENC)
 - ⏳ **Quality selector** and adaptive bitrate
 
 ## Project Structure
@@ -208,7 +208,7 @@ MEDIA_ROOT=/mnt/nas/media                   # Must match the "to" path in mappin
 AGENT_BASE_URL=https://video.home           # Used for fallback/docs
 HLS_CACHE_DIR=/cache/hls                    # For HLS segments (Phase 2)
 FFMPEG_PATH=/usr/bin/ffmpeg                 # For HLS transcoding (Phase 2)
-HWACCEL=none                                # none|vaapi|qsv|nvenc (Phase 2)
+HWACCEL=auto                                # none|auto|vaapi|qsv|nvenc
 PORT=8080
 
 # Security
@@ -463,7 +463,7 @@ npm -w plugin run test
 
 4. **Stash Version**: Built for Stash v3. GraphQL schema may vary by version — query may need adjustment.
 
-5. **Quality Profiles Are Preset**: ABR and quality selection are implemented, but the built-in profiles are fixed presets for now.
+5. **Hardware Acceleration Is Opportunistic**: The agent uses VAAPI/QSV/NVENC when available and falls back to software encoding when not.
 
 ## Roadmap
 

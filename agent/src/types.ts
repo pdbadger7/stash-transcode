@@ -39,7 +39,7 @@ export interface Config {
   agentBaseUrl: string;
   hlsCacheDir: string;
   ffmpegPath: string;
-  hwaccel: 'none' | 'vaapi' | 'qsv' | 'nvenc';
+  hwaccel: 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
   port: number;
   agentSharedToken?: string;
   corsAllowedOrigins: string[];

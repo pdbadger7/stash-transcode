@@ -4,13 +4,18 @@ import { existsSync, promises as fs } from 'fs';
 import { getMimeType } from './directStream.js';
 import type { HLSProfile } from './types.js';
 
+type RequestedHwAccel = 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
+type HardwareAccelMode = Exclude<RequestedHwAccel, 'none' | 'auto'>;
+type ResolvedHwAccelMode = 'none' | HardwareAccelMode;
+
 export interface HLSConfig {
   cacheDir: string;
   ffmpegPath: string;
-  hwaccel: 'none' | 'vaapi' | 'qsv' | 'nvenc';
+  hwaccel: RequestedHwAccel;
   segmentDuration: number;
   enableDebug?: boolean;
   profiles?: HLSProfile[];
+  hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
 }
 
 interface TranscodingProcess {
@@ -18,6 +23,7 @@ interface TranscodingProcess {
   startTime: number;
   sceneId: string;
   profileId: string;
+  mode: ResolvedHwAccelMode;
 }
 
 export const DEFAULT_HLS_PROFILES: HLSProfile[] = [
@@ -50,20 +56,23 @@ export const DEFAULT_HLS_PROFILES: HLSProfile[] = [
 export class HLSStream {
   private cacheDir: string;
   private ffmpegPath: string;
-  private hwaccel: HLSConfig['hwaccel'];
+  private requestedHwaccel: RequestedHwAccel;
   private segmentDuration: number;
   private enableDebug: boolean;
   private profiles: HLSProfile[];
+  private hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
   private activeTranscodes = new Map<string, TranscodingProcess>();
   private launchingTranscodes = new Set<string>();
+  private unavailableHwaccel = new Set<HardwareAccelMode>();
 
   constructor(config: HLSConfig) {
     this.cacheDir = config.cacheDir;
     this.ffmpegPath = config.ffmpegPath;
-    this.hwaccel = config.hwaccel;
+    this.requestedHwaccel = config.hwaccel;
     this.segmentDuration = config.segmentDuration || 4;
     this.enableDebug = config.enableDebug || false;
     this.profiles = config.profiles ?? DEFAULT_HLS_PROFILES;
+    this.hardwareAccelProbe = config.hardwareAccelProbe;
   }
 
   async getMasterPlaylist(
@@ -94,7 +103,15 @@ export class HLSStream {
 
     if (!this.activeTranscodes.has(key) && !this.launchingTranscodes.has(key)) {
       this.launchingTranscodes.add(key);
-      void this.startTranscode(sceneId, profile, inputPath, sceneDir, key);
+      void this.startTranscode(sceneId, profile, inputPath, sceneDir, key).catch(
+        (err) => {
+          this.activeTranscodes.delete(key);
+          this.launchingTranscodes.delete(key);
+          if (this.enableDebug) {
+            console.error(`[HLS] Failed to launch transcode for ${sceneId}/${profile.id}:`, err);
+          }
+        }
+      );
     }
 
     return this.generatePlaceholderPlaylist(profile);
@@ -138,7 +155,9 @@ export class HLSStream {
   ): Promise<void> {
     try {
       await fs.mkdir(outputDir, { recursive: true });
-      const args = this.buildFFmpegArgs(inputPath, outputDir, profile);
+
+      const mode = this.selectHwAccelMode();
+      const args = this.buildFFmpegArgs(inputPath, outputDir, profile, mode);
 
       if (this.enableDebug) {
         console.log(`[HLS] FFmpeg args for ${sceneId}/${profile.id}: ${args.join(' ')}`);
@@ -153,6 +172,7 @@ export class HLSStream {
         startTime: Date.now(),
         sceneId,
         profileId: profile.id,
+        mode,
       });
 
       process.on('error', (err) => {
@@ -163,13 +183,31 @@ export class HLSStream {
         }
       });
 
-      process.on('exit', (code, signal) => {
+      process.on('exit', (code) => {
         if (this.enableDebug && code !== 0) {
           console.warn(
-            `[HLS] FFmpeg exited for ${sceneId}/${profile.id} with code ${code ?? 'unknown'} signal ${signal ?? 'none'}`
+            `[HLS] FFmpeg exited for ${sceneId}/${profile.id} with code ${code ?? 'unknown'} in ${mode} mode`
           );
         }
+
         this.activeTranscodes.delete(key);
+
+        if (code !== 0 && mode !== 'none') {
+          this.unavailableHwaccel.add(mode);
+          void this.startTranscode(sceneId, profile, inputPath, outputDir, key).catch(
+            (err) => {
+              this.launchingTranscodes.delete(key);
+              if (this.enableDebug) {
+                console.error(
+                  `[HLS] Failed to retry transcode for ${sceneId}/${profile.id}:`,
+                  err
+                );
+              }
+            }
+          );
+          return;
+        }
+
         this.launchingTranscodes.delete(key);
       });
     } catch (err) {
@@ -182,17 +220,18 @@ export class HLSStream {
   private buildFFmpegArgs(
     inputPath: string,
     outputDir: string,
-    profile: HLSProfile
+    profile: HLSProfile,
+    mode: ResolvedHwAccelMode
   ): string[] {
-    const args = this.getHWAccelArgs();
+    const args = this.getHWAccelArgs(mode);
     args.push('-i', inputPath);
-    args.push('-c:v', this.getVideoCodec());
+    args.push('-c:v', this.getVideoCodec(mode));
 
     if (profile.height > 0) {
       args.push('-vf', `scale=-2:${profile.height}`);
     }
 
-    args.push('-preset', 'veryfast');
+    args.push(...this.getPresetArgs(mode));
     args.push('-b:v', `${profile.videoBitrateKbps}k`);
     args.push('-maxrate', `${Math.round(profile.videoBitrateKbps * 1.2)}k`);
     args.push('-bufsize', `${Math.max(profile.videoBitrateKbps * 2, 1000)}k`);
@@ -208,8 +247,8 @@ export class HLSStream {
     return args;
   }
 
-  private getVideoCodec(): string {
-    switch (this.hwaccel) {
+  private getVideoCodec(mode: ResolvedHwAccelMode): string {
+    switch (mode) {
       case 'vaapi':
         return 'h264_vaapi';
       case 'qsv':
@@ -221,17 +260,90 @@ export class HLSStream {
     }
   }
 
-  private getHWAccelArgs(): string[] {
-    switch (this.hwaccel) {
+  private getHWAccelArgs(mode: ResolvedHwAccelMode): string[] {
+    switch (mode) {
       case 'vaapi':
         return ['-hwaccel', 'vaapi', '-hwaccel_device', '/dev/dri/renderD128'];
       case 'qsv':
-        return ['-hwaccel', 'qsv'];
+        return ['-hwaccel', 'qsv', '-hwaccel_device', '/dev/dri/renderD128'];
       case 'nvenc':
         return ['-hwaccel', 'cuda'];
       default:
         return [];
     }
+  }
+
+  private getPresetArgs(mode: ResolvedHwAccelMode): string[] {
+    if (mode === 'none') {
+      return ['-preset', 'veryfast'];
+    }
+
+    if (mode === 'nvenc') {
+      return ['-preset', 'p4'];
+    }
+
+    return [];
+  }
+
+  private selectHwAccelMode(): ResolvedHwAccelMode {
+    if (this.requestedHwaccel === 'none') {
+      return 'none';
+    }
+
+    const candidates: HardwareAccelMode[] =
+      this.requestedHwaccel === 'auto'
+        ? ['vaapi', 'qsv', 'nvenc']
+        : [this.requestedHwaccel];
+
+    for (const candidate of candidates) {
+      if (this.isHwAccelAvailable(candidate)) {
+        return candidate;
+      }
+    }
+
+    return 'none';
+  }
+
+  private isHwAccelAvailable(mode: HardwareAccelMode): boolean {
+    if (this.hardwareAccelProbe) {
+      return this.hardwareAccelProbe(mode);
+    }
+
+    if (this.unavailableHwaccel.has(mode)) {
+      return false;
+    }
+
+    if (mode === 'nvenc') {
+      return this.hasNvidiaDevice();
+    }
+
+    return this.findDriDevice() !== null;
+  }
+
+  private findDriDevice(): string | null {
+    for (let index = 128; index < 192; index += 1) {
+      const renderDevice = `/dev/dri/renderD${index}`;
+      if (existsSync(renderDevice)) {
+        return renderDevice;
+      }
+    }
+
+    for (let index = 0; index < 16; index += 1) {
+      const cardDevice = `/dev/dri/card${index}`;
+      if (existsSync(cardDevice)) {
+        return cardDevice;
+      }
+    }
+
+    return null;
+  }
+
+  private hasNvidiaDevice(): boolean {
+    return (
+      existsSync('/dev/nvidia0') ||
+      existsSync('/dev/nvidiactl') ||
+      existsSync('/dev/nvidia-uvm')
+    );
   }
 
   private generateMasterPlaylist(
