@@ -26,7 +26,7 @@ type ScenePlayerProps = {
   scene?: StashScene;
   settings?: Partial<PluginSettings>;
   pluginSettings?: Partial<PluginSettings>;
-};
+} & Record<string, unknown>;
 
 PluginApi.patch.instead(
   'ScenePlayer',
@@ -35,10 +35,10 @@ PluginApi.patch.instead(
     _: unknown,
     original: React.ComponentType<Record<string, unknown>>
   ) {
-  return React.createElement(ScenePlayerPatch, {
-    scene: props?.scene,
-    originalComponent: original,
-    settings: normalizeSettings(props?.settings ?? props?.pluginSettings),
-  });
+    return React.createElement(ScenePlayerPatch, {
+      ...props,
+      originalComponent: original,
+      settings: normalizeSettings(props?.settings ?? props?.pluginSettings),
+    });
   }
 );

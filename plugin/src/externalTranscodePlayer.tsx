@@ -33,11 +33,11 @@ function normalizeSettings(
   };
 }
 
-interface ScenePlayerPatchProps {
+type ScenePlayerPatchProps = {
   scene?: StashScene;
   originalComponent: React.ComponentType<Record<string, unknown>>;
   settings: PluginSettings;
-}
+} & Record<string, unknown>;
 
 /**
  * Scene player patch component
@@ -47,6 +47,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   scene,
   originalComponent: OriginalPlayer,
   settings,
+  ...playerProps
 }) => {
   const resolvedSettings = useMemo(() => normalizeSettings(settings), [settings]);
   const [useExternal, setUseExternal] = useState(false);
@@ -212,5 +213,5 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
   // Fall back to original Stash player
   if (resolvedSettings.debug) console.log('[ScenePlayerPatch] Using original player');
-  return React.createElement(OriginalPlayer);
+  return React.createElement(OriginalPlayer, playerProps);
 };
