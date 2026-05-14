@@ -36,6 +36,20 @@ describe('buildRemuxHlsArgs', () => {
     expect(args).toContain('-tag:v');
     expect(args[args.indexOf('-tag:v') + 1]).toBe('hvc1');
   });
+
+  it('can pace input reads when readRate is configured', () => {
+    const args = buildRemuxHlsArgs({
+      inputPath: '/m/video.mp4',
+      outputDir: '/tmp/remux/sc1',
+      segmentDuration: 4,
+      readRate: 1.25,
+      videoCodec: 'h264',
+    });
+
+    expect(args).toContain('-readrate');
+    expect(args[args.indexOf('-readrate') + 1]).toBe('1.25');
+    expect(args.indexOf('-readrate')).toBeLessThan(args.indexOf('-i'));
+  });
 });
 
 describe('normalizeVideoCodec', () => {

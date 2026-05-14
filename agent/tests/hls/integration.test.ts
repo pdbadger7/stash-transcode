@@ -89,8 +89,10 @@ maybeDescribe('HLS integration', () => {
 
       const init = await remux.getAsset({ sceneId: 'sc-remux', assetName: 'init.mp4' });
       const segment = await remux.getAsset({ sceneId: 'sc-remux', assetName: 'segment_000.m4s' });
-      expect(init?.length).toBeGreaterThan(100);
-      expect(segment?.length).toBeGreaterThan(100);
+      expect(init?.size).toBeGreaterThan(100);
+      expect(segment?.size).toBeGreaterThan(100);
+      init?.stream.destroy();
+      segment?.stream.destroy();
     } finally {
       remux.shutdown();
     }

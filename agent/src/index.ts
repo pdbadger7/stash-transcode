@@ -44,6 +44,7 @@ const remuxHlsStream = new RemuxHLSStream({
   ffmpegPath: config.ffmpegPath,
   segmentDuration: config.hlsSegmentDuration,
   allowedVideoCodecs: config.remuxHlsVideoCodecs,
+  readRate: config.remuxHlsReadRate,
   readyTimeoutMs: config.remuxHlsReadyTimeoutMs,
   enableDebug: process.env.DEBUG === 'true',
 });
@@ -523,8 +524,8 @@ app.get<{
     reply
       .header('Content-Type', remuxHlsStream.getAssetMimeType(assetName))
       .header('Cache-Control', 'public, max-age=3600')
-      .header('Content-Length', String(asset.length))
-      .send(asset);
+      .header('Content-Length', String(asset.size))
+      .send(asset.stream);
   } catch (err) {
     if (err instanceof RemuxNotReadyError) {
       return reply

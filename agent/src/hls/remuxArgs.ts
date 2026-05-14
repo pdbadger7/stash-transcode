@@ -2,6 +2,7 @@ export interface RemuxHlsArgsInput {
   inputPath: string;
   outputDir: string;
   segmentDuration: number;
+  readRate?: number;
   videoCodec?: string;
 }
 
@@ -12,6 +13,13 @@ export function buildRemuxHlsArgs(input: RemuxHlsArgsInput): string[] {
     'warning',
     '-nostdin',
     '-y',
+  ];
+
+  if (input.readRate !== undefined && input.readRate > 0) {
+    args.push('-readrate', String(input.readRate));
+  }
+
+  args.push(
     '-i',
     input.inputPath,
     '-map',
@@ -21,8 +29,8 @@ export function buildRemuxHlsArgs(input: RemuxHlsArgsInput): string[] {
     '-c:v',
     'copy',
     '-c:a',
-    'copy',
-  ];
+    'copy'
+  );
 
   if (normalizeVideoCodec(input.videoCodec) === 'hevc') {
     args.push('-tag:v', 'hvc1');

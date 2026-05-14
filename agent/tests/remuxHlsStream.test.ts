@@ -81,7 +81,9 @@ describe('RemuxHLSStream', () => {
     expect(playlist).toContain('/stash/scene/sc1/remux/segment_000.m4s?token=tok');
 
     const asset = await remux.getAsset({ sceneId: 'sc1', assetName: 'segment_000.m4s' });
-    expect(asset?.toString()).toBe('SEG0');
+    expect(asset?.size).toBe(4);
+    expect(asset?.stream.readable).toBe(true);
+    asset?.stream.destroy();
   });
 
   it('rejects sources whose video codec is not allowlisted', async () => {

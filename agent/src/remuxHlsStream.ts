@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'child_process';
-import { constants as fsConstants, promises as fs } from 'fs';
+import { constants as fsConstants, createReadStream, promises as fs, type ReadStream } from 'fs';
 import path from 'path';
 import { getMimeType } from './directStream.js';
 import type { SourceVideoMetadata } from './hlsStream.js';
@@ -15,6 +15,7 @@ export interface RemuxHLSConfig {
   ffmpegPath: string;
   segmentDuration: number;
   allowedVideoCodecs: string[];
+  readRate?: number;
   readyTimeoutMs?: number;
   spawn?: SpawnFn;
   enableDebug?: boolean;
@@ -30,6 +31,11 @@ export interface RemuxPlaylistInput {
 export interface RemuxAssetInput {
   sceneId: string;
   assetName: string;
+}
+
+export interface RemuxAsset {
+  stream: ReadStream;
+  size: number;
 }
 
 export class RemuxNotReadyError extends Error {
@@ -84,7 +90,7 @@ export class RemuxHLSStream {
     return rewritePlaylistUris(playlist, input.sceneId, input.token);
   }
 
-  async getAsset(input: RemuxAssetInput): Promise<Buffer | null> {
+  async getAsset(input: RemuxAssetInput): Promise<RemuxAsset | null> {
     if (!ASSET_RE.test(input.assetName)) {
       throw new Error(`Invalid remux asset name: ${input.assetName}`);
     }
@@ -95,7 +101,11 @@ export class RemuxHLSStream {
       return null;
     }
 
-    return fs.readFile(assetPath);
+    const stat = await fs.stat(assetPath);
+    return {
+      stream: createReadStream(assetPath),
+      size: stat.size,
+    };
   }
 
   getPlaylistMimeType(): string {
@@ -155,6 +165,7 @@ export class RemuxHLSStream {
       inputPath,
       outputDir,
       segmentDuration: this.cfg.segmentDuration,
+      readRate: this.cfg.readRate,
       videoCodec: sourceMetadata.videoCodec,
     });
 

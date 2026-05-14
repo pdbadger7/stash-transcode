@@ -34,6 +34,7 @@ services:
       HWACCEL: auto
       HWACCEL_DEVICE: /dev/dri/renderD128
       REMUX_HLS_VIDEO_CODECS: h264,hevc
+      REMUX_HLS_READ_RATE: 0
       REMUX_HLS_READY_TIMEOUT_MS: 30000
       PORT: 8080
       AGENT_SHARED_TOKEN: ${AGENT_SHARED_TOKEN:-}

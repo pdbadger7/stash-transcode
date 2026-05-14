@@ -216,6 +216,7 @@ HWACCEL=auto                                # none|auto|vaapi|qsv|nvenc
 HWACCEL_DEVICE=/dev/dri/renderD128          # VAAPI/QSV render device when HWACCEL uses /dev/dri
 HLS_SEGMENT_DURATION=4                      # Main HLS segment duration (seconds)
 REMUX_HLS_VIDEO_CODECS=h264,hevc            # Video codecs eligible for copy-only fMP4 HLS
+REMUX_HLS_READ_RATE=0                       # Optional FFmpeg input pacing; 0 = unlimited, 1 = realtime
 REMUX_HLS_READY_TIMEOUT_MS=30000            # How long remux endpoints wait for playlist/assets
 HLS_STARTUP_SEGMENT_DURATION=1              # Short startup segment target (seconds)
 HLS_VARIANT_WAIT_MS=30000                   # Wait for first media segments before returning 503
