@@ -48,6 +48,7 @@ export interface Config {
   hlsSegmentTimeoutMs: number;
   remuxHlsVideoCodecs: string[];
   remuxHlsReadRate: number;
+  remuxHlsStartOffsetSeconds: number;
   remuxHlsReadyTimeoutMs: number;
   port: number;
   agentSharedToken?: string;

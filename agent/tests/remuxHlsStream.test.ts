@@ -15,6 +15,14 @@ function makeProc() {
   return p;
 }
 
+async function closeStream(stream: { destroy: () => void; once: (event: string, cb: () => void) => void } | undefined): Promise<void> {
+  if (!stream) return;
+  await new Promise<void>((resolve) => {
+    stream.once('close', resolve);
+    stream.destroy();
+  });
+}
+
 async function makeTempDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'remux-hls-'));
 }
@@ -43,6 +51,7 @@ describe('RemuxHLSStream', () => {
           [
             '#EXTM3U',
             '#EXT-X-VERSION:7',
+            '#EXT-X-PLAYLIST-TYPE:EVENT',
             '#EXT-X-MAP:URI="init.mp4"',
             '#EXTINF:4.000,',
             'segment_000.m4s',
@@ -60,6 +69,7 @@ describe('RemuxHLSStream', () => {
       ffmpegPath: 'ffmpeg',
       segmentDuration: 4,
       allowedVideoCodecs: ['h264', 'hevc'],
+      startOffsetSeconds: 0.15,
       readyTimeoutMs: 1000,
       spawn,
     });
@@ -77,13 +87,57 @@ describe('RemuxHLSStream', () => {
     expect(args[args.indexOf('-c:v') + 1]).toBe('copy');
     expect(args).toContain('-tag:v');
     expect(args[args.indexOf('-tag:v') + 1]).toBe('hvc1');
+    expect(playlist).toContain('#EXT-X-PLAYLIST-TYPE:VOD');
+    expect(playlist).not.toContain('#EXT-X-PLAYLIST-TYPE:EVENT');
+    expect(playlist).toContain('#EXT-X-START:TIME-OFFSET=0.150,PRECISE=YES');
     expect(playlist).toContain('/stash/scene/sc1/remux/init.mp4?token=tok');
     expect(playlist).toContain('/stash/scene/sc1/remux/segment_000.m4s?token=tok');
 
     const asset = await remux.getAsset({ sceneId: 'sc1', assetName: 'segment_000.m4s' });
     expect(asset?.size).toBe(4);
     expect(asset?.stream.readable).toBe(true);
-    asset?.stream.destroy();
+    await closeStream(asset?.stream);
+  });
+
+  it('keeps an in-progress playlist as EVENT so generated segments remain seekable', async () => {
+    const cacheDir = await makeTempDir();
+    dirs.push(cacheDir);
+    const outputDir = path.join(cacheDir, 'remux', Buffer.from('sc-event').toString('base64url'));
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(path.join(outputDir, 'init.mp4'), Buffer.from('INIT'));
+    await fs.writeFile(path.join(outputDir, 'segment_000.m4s'), Buffer.from('SEG0'));
+    await fs.writeFile(
+      path.join(outputDir, 'master.m3u8'),
+      [
+        '#EXTM3U',
+        '#EXT-X-VERSION:7',
+        '#EXT-X-PLAYLIST-TYPE:EVENT',
+        '#EXT-X-MAP:URI="init.mp4"',
+        '#EXTINF:4.000,',
+        'segment_000.m4s',
+        '',
+      ].join('\n')
+    );
+
+    const remux = new RemuxHLSStream({
+      cacheDir,
+      ffmpegPath: 'ffmpeg',
+      segmentDuration: 4,
+      allowedVideoCodecs: ['h264'],
+      readyTimeoutMs: 1,
+      spawn: vi.fn(),
+    });
+
+    const playlist = await remux.getPlaylist({
+      sceneId: 'sc-event',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 10, videoCodec: 'h264' },
+    });
+
+    expect(playlist).toContain('#EXT-X-PLAYLIST-TYPE:EVENT');
+    expect(playlist).not.toContain('#EXT-X-PLAYLIST-TYPE:VOD');
+    expect(playlist).not.toContain('#EXT-X-ENDLIST');
+    expect(playlist).toContain('/stash/scene/sc-event/remux/segment_000.m4s');
   });
 
   it('rejects sources whose video codec is not allowlisted', async () => {

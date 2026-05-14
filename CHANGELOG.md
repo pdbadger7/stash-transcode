@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 - 2026-05-14
+
+- Generate remux HLS playlists as `EVENT` playlists so playback can start once the first fMP4 segment is ready instead of waiting for full VOD remux completion.
+- Add configurable `REMUX_HLS_START_OFFSET_SECONDS` and emit `EXT-X-START` by default to avoid hls.js stalls when copied fMP4 media begins slightly after zero.
+
 ## 0.3.3 - 2026-05-14
 
 - Stream remux HLS assets from disk instead of buffering each fMP4 segment in memory before sending it.

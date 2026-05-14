@@ -19,6 +19,8 @@ describe('buildRemuxHlsArgs', () => {
     expect(args).not.toContain('h264_vaapi');
     expect(args).toContain('-hls_segment_type');
     expect(args[args.indexOf('-hls_segment_type') + 1]).toBe('fmp4');
+    expect(args).toContain('-hls_playlist_type');
+    expect(args[args.indexOf('-hls_playlist_type') + 1]).toBe('event');
     expect(args).toContain('-hls_fmp4_init_filename');
     expect(args[args.indexOf('-hls_fmp4_init_filename') + 1]).toBe('init.mp4');
     expect(args).toContain('-hls_segment_filename');

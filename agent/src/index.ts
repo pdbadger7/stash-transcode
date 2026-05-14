@@ -45,6 +45,7 @@ const remuxHlsStream = new RemuxHLSStream({
   segmentDuration: config.hlsSegmentDuration,
   allowedVideoCodecs: config.remuxHlsVideoCodecs,
   readRate: config.remuxHlsReadRate,
+  startOffsetSeconds: config.remuxHlsStartOffsetSeconds,
   readyTimeoutMs: config.remuxHlsReadyTimeoutMs,
   enableDebug: process.env.DEBUG === 'true',
 });

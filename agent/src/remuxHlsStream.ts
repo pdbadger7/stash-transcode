@@ -16,6 +16,7 @@ export interface RemuxHLSConfig {
   segmentDuration: number;
   allowedVideoCodecs: string[];
   readRate?: number;
+  startOffsetSeconds?: number;
   readyTimeoutMs?: number;
   spawn?: SpawnFn;
   enableDebug?: boolean;
@@ -87,7 +88,11 @@ export class RemuxHLSStream {
     }
 
     const playlist = await fs.readFile(playlistPath, 'utf8');
-    return rewritePlaylistUris(playlist, input.sceneId, input.token);
+    return rewritePlaylist(playlist, {
+      sceneId: input.sceneId,
+      token: input.token,
+      startOffsetSeconds: this.cfg.startOffsetSeconds,
+    });
   }
 
   async getAsset(input: RemuxAssetInput): Promise<RemuxAsset | null> {
@@ -197,21 +202,46 @@ export class RemuxHLSStream {
   }
 }
 
-function rewritePlaylistUris(playlist: string, sceneId: string, token?: string): string {
+interface RewritePlaylistInput {
+  sceneId: string;
+  token?: string;
+  startOffsetSeconds?: number;
+}
+
+function rewritePlaylist(playlist: string, input: RewritePlaylistInput): string {
+  const startOffset = input.startOffsetSeconds ?? 0;
+  const complete = playlist.includes('#EXT-X-ENDLIST');
+  let insertedStartOffset = false;
   return playlist
     .split('\n')
     .map((line) => {
-      if (line.startsWith('#EXT-X-MAP:')) {
-        return line.replace(/URI="([^"]+)"/, (_match, assetName: string) => {
-          return `URI="${withToken(`/stash/scene/${sceneId}/remux/${assetName}`, token)}"`;
-        });
+      if (complete && line === '#EXT-X-PLAYLIST-TYPE:EVENT') {
+        return '#EXT-X-PLAYLIST-TYPE:VOD';
       }
-      if (line && !line.startsWith('#')) {
-        return withToken(`/stash/scene/${sceneId}/remux/${line}`, token);
+      const rewritten = rewritePlaylistLine(line, input.sceneId, input.token);
+      if (
+        startOffset > 0 &&
+        !insertedStartOffset &&
+        line.startsWith('#EXT-X-MAP:')
+      ) {
+        insertedStartOffset = true;
+        return `#EXT-X-START:TIME-OFFSET=${startOffset.toFixed(3)},PRECISE=YES\n${rewritten}`;
       }
-      return line;
+      return rewritten;
     })
     .join('\n');
+}
+
+function rewritePlaylistLine(line: string, sceneId: string, token?: string): string {
+  if (line.startsWith('#EXT-X-MAP:')) {
+    return line.replace(/URI="([^"]+)"/, (_match, assetName: string) => {
+      return `URI="${withToken(`/stash/scene/${sceneId}/remux/${assetName}`, token)}"`;
+    });
+  }
+  if (line && !line.startsWith('#')) {
+    return withToken(`/stash/scene/${sceneId}/remux/${line}`, token);
+  }
+  return line;
 }
 
 function withToken(uri: string, token?: string): string {

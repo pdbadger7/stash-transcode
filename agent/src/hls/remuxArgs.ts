@@ -46,7 +46,7 @@ export function buildRemuxHlsArgs(input: RemuxHlsArgsInput): string[] {
     '-hls_list_size',
     '0',
     '-hls_playlist_type',
-    'vod',
+    'event',
     '-hls_flags',
     'independent_segments',
     '-hls_fmp4_init_filename',
