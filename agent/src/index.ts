@@ -66,6 +66,7 @@ async function resolveSceneInputContext(sceneId: string): Promise<SceneInputCont
       width: file.width,
       height: file.height,
       fps: file.frame_rate,
+      videoCodec: file.video_codec,
     },
   };
 }

@@ -80,8 +80,8 @@ function videoCodec(mode: ResolvedHwAccelMode): string {
   }
 }
 
-function presetArgs(mode: ResolvedHwAccelMode): string[] {
-  if (mode === 'none') return ['-preset', 'veryfast'];
+function presetArgs(mode: ResolvedHwAccelMode, preset: 'ultrafast' | 'veryfast' = 'veryfast'): string[] {
+  if (mode === 'none') return ['-preset', preset];
   if (mode === 'nvenc') return ['-preset', 'p4'];
   return [];
 }
@@ -93,12 +93,14 @@ export interface SingleSegmentArgsInput {
   durationSeconds: number;
   mode: ResolvedHwAccelMode;
   segmentDuration: number;
+  sourceVideoCodec?: string;
 }
 
 export function buildSingleSegmentArgs(input: SingleSegmentArgsInput): string[] {
-  const { inputPath, profile, startSeconds, durationSeconds, mode } = input;
+  const { inputPath, profile, startSeconds, durationSeconds, mode, sourceVideoCodec } = input;
+  const streamCopy = sourceVideoCodec === 'h264' && profile.height === 0;
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin'];
-  args.push(...hwAccelInputArgs(mode));
+  args.push(...hwAccelInputArgs(streamCopy ? 'none' : mode));
   args.push('-ss', String(startSeconds));
   args.push('-i', inputPath);
   args.push('-t', String(durationSeconds));
@@ -106,14 +108,18 @@ export function buildSingleSegmentArgs(input: SingleSegmentArgsInput): string[] 
   args.push('-muxdelay', '0', '-muxpreload', '0');
   args.push('-map', '0:v:0');
   args.push('-map', '0:a:0?');
-  args.push('-c:v', videoCodec(mode));
-  if (profile.height > 0) args.push('-vf', `scale=-2:${profile.height}`);
-  args.push(...presetArgs(mode));
-  args.push('-force_key_frames', `expr:gte(t,${startSeconds})`);
-  args.push('-sc_threshold', '0');
-  args.push('-b:v', `${profile.videoBitrateKbps}k`);
-  args.push('-maxrate', `${Math.round(profile.videoBitrateKbps * 1.2)}k`);
-  args.push('-bufsize', `${Math.max(profile.videoBitrateKbps * 2, 1000)}k`);
+  if (streamCopy) {
+    args.push('-c:v', 'copy');
+  } else {
+    args.push('-c:v', videoCodec(mode));
+    if (profile.height > 0) args.push('-vf', `scale=-2:${profile.height}`);
+    args.push(...presetArgs(mode, 'ultrafast'));
+    args.push('-force_key_frames', `expr:gte(t,${startSeconds})`);
+    args.push('-sc_threshold', '0');
+    args.push('-b:v', `${profile.videoBitrateKbps}k`);
+    args.push('-maxrate', `${Math.round(profile.videoBitrateKbps * 1.2)}k`);
+    args.push('-bufsize', `${Math.max(profile.videoBitrateKbps * 2, 1000)}k`);
+  }
   args.push('-c:a', 'aac', '-b:a', '128k', '-ac', '2');
   args.push('-f', 'mpegts');
   args.push('pipe:1');

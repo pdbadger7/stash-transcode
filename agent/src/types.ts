@@ -11,6 +11,7 @@ export interface StashFile {
   width?: number;
   height?: number;
   frame_rate?: number;
+  video_codec?: string;
 }
 
 export interface ProbeResponse {

@@ -27,6 +27,7 @@ export interface SourceVideoMetadata {
   width?: number;
   height?: number;
   fps?: number;
+  videoCodec?: string;
 }
 
 export interface HLSConfig {
@@ -167,13 +168,15 @@ export class HLSStream {
     if (sessionHit) return sessionHit;
 
     const mode = this.selectMode();
+    const coldDuration = Math.min(segDuration, 2);
     const args = buildSingleSegmentArgs({
       inputPath: input.inputPath,
       profile,
       startSeconds,
-      durationSeconds: segDuration,
+      durationSeconds: coldDuration,
       mode,
       segmentDuration: this.cfg.segmentDuration,
+      sourceVideoCodec: input.sourceMetadata.videoCodec,
     });
 
     const timeoutCtrl = new AbortController();
@@ -196,9 +199,10 @@ export class HLSStream {
             inputPath: input.inputPath,
             profile,
             startSeconds,
-            durationSeconds: segDuration,
+            durationSeconds: coldDuration,
             mode: 'none',
             segmentDuration: this.cfg.segmentDuration,
+            sourceVideoCodec: input.sourceMetadata.videoCodec,
           }),
           signal: composite,
         });

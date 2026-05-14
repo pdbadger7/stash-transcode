@@ -13,6 +13,7 @@ const STASH_SCENE_QUERY_WITH_SOURCE_METADATA = `
         width
         height
         frame_rate
+        video_codec
       }
     }
   }

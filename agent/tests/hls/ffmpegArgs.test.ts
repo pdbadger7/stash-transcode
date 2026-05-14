@@ -42,6 +42,20 @@ describe('buildSingleSegmentArgs', () => {
     expect(args[args.indexOf('-force_key_frames') + 1]).toBe('expr:gte(t,40)');
   });
 
+  it('uses ultrafast preset for software encoding', () => {
+    const args = buildSingleSegmentArgs({
+      inputPath: '/m/video.mp4',
+      profile: PROFILE,
+      startSeconds: 0,
+      durationSeconds: 4,
+      mode: 'none',
+      segmentDuration: 4,
+    });
+    const presetIdx = args.indexOf('-preset');
+    expect(presetIdx).toBeGreaterThanOrEqual(0);
+    expect(args[presetIdx + 1]).toBe('ultrafast');
+  });
+
   it('uses h264_vaapi codec when mode is vaapi', () => {
     const args = buildSingleSegmentArgs({
       inputPath: '/m/video.mp4',
@@ -53,9 +67,58 @@ describe('buildSingleSegmentArgs', () => {
     });
     expect(args).toContain('h264_vaapi');
   });
+
+  it('uses stream copy and skips scale/preset/bitrate when source is h264 with no-scale profile', () => {
+    const nativeProfile = { ...PROFILE, height: 0 };
+    const args = buildSingleSegmentArgs({
+      inputPath: '/m/video.mp4',
+      profile: nativeProfile,
+      startSeconds: 10,
+      durationSeconds: 2,
+      mode: 'none',
+      segmentDuration: 4,
+      sourceVideoCodec: 'h264',
+    });
+    expect(args).toContain('copy');
+    expect(args[args.indexOf('-c:v') + 1]).toBe('copy');
+    expect(args).not.toContain('-preset');
+    expect(args).not.toContain('-vf');
+    expect(args).not.toContain('-b:v');
+    expect(args).toContain('-c:a');
+    expect(args[args.length - 1]).toBe('pipe:1');
+  });
+
+  it('does not use stream copy when source codec is not h264', () => {
+    const nativeProfile = { ...PROFILE, height: 0 };
+    const args = buildSingleSegmentArgs({
+      inputPath: '/m/video.mp4',
+      profile: nativeProfile,
+      startSeconds: 0,
+      durationSeconds: 2,
+      mode: 'none',
+      segmentDuration: 4,
+      sourceVideoCodec: 'hevc',
+    });
+    expect(args).not.toContain('copy');
+    expect(args).toContain('libx264');
+  });
 });
 
 describe('buildSessionArgs', () => {
+  it('uses veryfast preset for software encoding', () => {
+    const args = buildSessionArgs({
+      inputPath: '/m/v.mp4',
+      profile: PROFILE,
+      head: 0,
+      mode: 'none',
+      segmentDuration: 4,
+      outputDir: '/tmp/cache/sc1/720p',
+    });
+    const presetIdx = args.indexOf('-preset');
+    expect(presetIdx).toBeGreaterThanOrEqual(0);
+    expect(args[presetIdx + 1]).toBe('veryfast');
+  });
+
   it('starts at head*segmentDuration with -start_number=head and discards playlist', () => {
     const args = buildSessionArgs({
       inputPath: '/m/v.mp4',
