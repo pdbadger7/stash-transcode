@@ -99,8 +99,8 @@ export function buildSingleSegmentArgs(input: SingleSegmentArgsInput): string[] 
   const { inputPath, profile, startSeconds, durationSeconds, mode } = input;
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin'];
   args.push(...hwAccelInputArgs(mode));
-  args.push('-ss', String(startSeconds));
   args.push('-i', inputPath);
+  args.push('-ss', String(startSeconds));
   args.push('-t', String(durationSeconds));
   args.push('-copyts', '-muxdelay', '0', '-muxpreload', '0');
   args.push('-map', '0:v:0');
