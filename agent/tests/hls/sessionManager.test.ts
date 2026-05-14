@@ -13,16 +13,18 @@ function makeProc() {
 describe('SessionManager', () => {
   it('starts a session on first noteRequest', () => {
     const spawn = vi.fn(() => makeProc());
+    const buildArgs = vi.fn(() => ['ARGS']);
     const m = new SessionManager({
       ffmpegPath: 'ffmpeg',
       segmentDuration: 4,
       lookaheadSegments: 10,
       maxSessions: 4,
       spawn,
-      buildArgs: () => ['ARGS'],
+      buildArgs,
     });
     m.noteRequest({ sceneId: 'sc', profileId: '720p', index: 0, inputPath: '/x.mp4', mode: 'none', profile: anyProfile() });
     expect(spawn).toHaveBeenCalledTimes(1);
+    expect(buildArgs.mock.calls[0][0].segmentCount).toBe(10);
     expect(m.activeSessions()).toEqual([{ sceneId: 'sc', profileId: '720p', head: 1 }]);
   });
 
@@ -42,7 +44,7 @@ describe('SessionManager', () => {
     expect(spawn).toHaveBeenCalledTimes(1);
   });
 
-  it('restarts session when requested index is past the lookahead horizon', () => {
+  it('keeps the existing session and starts another window when seeking past the lookahead horizon', () => {
     const spawn = vi.fn(() => makeProc());
     const m = new SessionManager({
       ffmpegPath: 'ffmpeg',
@@ -56,7 +58,22 @@ describe('SessionManager', () => {
     m.noteRequest({ ...req, index: 0 });
     m.noteRequest({ ...req, index: 100 });
     expect(spawn).toHaveBeenCalledTimes(2);
-    expect(m.activeSessions()[0].head).toBe(101);
+    expect(m.activeSessions().map((s) => s.head).sort((a, b) => a - b)).toEqual([1, 101]);
+  });
+
+  it('reports whether an active session can produce a specific segment', () => {
+    const spawn = vi.fn(() => makeProc());
+    const m = new SessionManager({
+      ffmpegPath: 'ffmpeg',
+      segmentDuration: 4,
+      lookaheadSegments: 10,
+      maxSessions: 4,
+      spawn,
+      buildArgs: () => ['ARGS'],
+    });
+    m.noteRequest({ sceneId: 'sc', profileId: '720p', index: 100, inputPath: '/x.mp4', mode: 'none', profile: anyProfile() });
+    expect(m.canProduce('sc', '720p', 105)).toBe(true);
+    expect(m.canProduce('sc', '720p', 0)).toBe(false);
   });
 
   it('shutdown() kills all sessions', () => {

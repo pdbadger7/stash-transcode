@@ -180,12 +180,11 @@ export class HLSStream {
         `[HLS] selected hw mode=${mode}${selection.hwaccelDevice ? ` device=${selection.hwaccelDevice}` : ''} scene=${input.sceneId} profile=${input.profileId} segment=${index}`
       );
     }
-    const coldDuration = Math.min(segDuration, 2);
     const args = buildSingleSegmentArgs({
       inputPath: input.inputPath,
       profile,
       startSeconds,
-      durationSeconds: coldDuration,
+      durationSeconds: segDuration,
       mode,
       segmentDuration: this.cfg.segmentDuration,
       hwaccelDevice: selection.hwaccelDevice,
@@ -216,7 +215,7 @@ export class HLSStream {
               inputPath: input.inputPath,
               profile,
               startSeconds,
-              durationSeconds: coldDuration,
+              durationSeconds: segDuration,
               mode: 'none',
               segmentDuration: this.cfg.segmentDuration,
               hwaccelDevice: selection.hwaccelDevice,
@@ -276,7 +275,7 @@ export class HLSStream {
     profileId: string,
     index: number
   ): Promise<Buffer | null> {
-    if (!this.sessions.isInUse(sceneId, profileId)) return null;
+    if (!this.sessions.canProduce(sceneId, profileId, index)) return null;
     const deadline = Date.now() + this.cfg.sessionWaitMs;
     while (Date.now() < deadline) {
       if (await this.cache.has(sceneId, profileId, index)) {

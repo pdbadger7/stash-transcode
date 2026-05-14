@@ -11,6 +11,7 @@ export interface BuildSessionArgsFn {
     head: number;
     mode: ResolvedHwAccelMode;
     segmentDuration: number;
+    segmentCount?: number;
     outputDir: string;
     hwaccelDevice?: string;
   }): string[];
@@ -58,22 +59,17 @@ export class SessionManager {
   }
 
   noteRequest(input: NoteRequestInput): void {
-    const key = `${input.sceneId}:${input.profileId}`;
-    const existing = this.sessions.get(key);
-    const horizonEnd = existing ? existing.head + this.cfg.lookaheadSegments : -1;
-
-    if (existing && input.index >= existing.head && input.index <= horizonEnd) {
-      existing.lastActivity = Date.now();
-      return;
-    }
+    const existing = this.findCoveringSession(input.sceneId, input.profileId, input.index);
 
     if (existing) {
-      this.killSession(existing);
+      existing.lastActivity = Date.now();
+      return;
     }
 
     this.evictIfNeeded();
 
     const head = input.index + 1;
+    const key = `${input.sceneId}:${input.profileId}:${head}`;
     const outputDir =
       this.cfg.outputDirFor?.(input.sceneId, input.profileId) ?? `/tmp/hls/${input.sceneId}/${input.profileId}`;
     const args = this.cfg.buildArgs({
@@ -82,6 +78,7 @@ export class SessionManager {
       head,
       mode: input.mode,
       segmentDuration: this.cfg.segmentDuration,
+      segmentCount: this.cfg.lookaheadSegments,
       outputDir,
       hwaccelDevice: input.hwaccelDevice ?? this.cfg.hwaccelDevice,
     });
@@ -122,7 +119,13 @@ export class SessionManager {
   }
 
   isInUse(sceneId: string, profileId: string): boolean {
-    return this.sessions.has(`${sceneId}:${profileId}`);
+    return Array.from(this.sessions.values()).some(
+      (s) => s.sceneId === sceneId && s.profileId === profileId
+    );
+  }
+
+  canProduce(sceneId: string, profileId: string, index: number): boolean {
+    return this.findCoveringSession(sceneId, profileId, index) !== undefined;
   }
 
   shutdown(): void {
@@ -132,11 +135,25 @@ export class SessionManager {
 
   private evictIfNeeded(): void {
     while (this.sessions.size >= this.cfg.maxSessions) {
-      const oldest = [...this.sessions.values()].sort((a, b) => a.startedAt - b.startedAt)[0];
+      const oldest = [...this.sessions.values()].sort((a, b) => a.lastActivity - b.lastActivity)[0];
       if (!oldest) return;
       this.killSession(oldest);
       this.sessions.delete(oldest.key);
     }
+  }
+
+  private findCoveringSession(
+    sceneId: string,
+    profileId: string,
+    index: number
+  ): Session | undefined {
+    return Array.from(this.sessions.values()).find(
+      (s) =>
+        s.sceneId === sceneId &&
+        s.profileId === profileId &&
+        index >= s.head &&
+        index < s.head + this.cfg.lookaheadSegments
+    );
   }
 
   private killSession(session: Session): void {

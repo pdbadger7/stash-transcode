@@ -174,6 +174,7 @@ export interface SessionArgsInput {
   head: number;
   mode: ResolvedHwAccelMode;
   segmentDuration: number;
+  segmentCount?: number;
   outputDir: string;
   hwaccelDevice?: string;
 }
@@ -185,6 +186,9 @@ export function buildSessionArgs(input: SessionArgsInput): string[] {
   args.push(...hwAccelInputArgs(mode, input.hwaccelDevice));
   args.push('-ss', String(startSeconds));
   args.push('-i', inputPath);
+  if (input.segmentCount && input.segmentCount > 0) {
+    args.push('-t', String(input.segmentCount * segmentDuration));
+  }
   args.push('-copyts', '-muxdelay', '0', '-muxpreload', '0');
   args.push('-map', '0:v:0', '-map', '0:a:0?');
   args.push('-c:v', videoCodec(mode));

@@ -152,10 +152,13 @@ describe('buildSessionArgs', () => {
       head: 100,
       mode: 'none',
       segmentDuration: 4,
+      segmentCount: 15,
       outputDir: '/tmp/cache/sc1/720p',
     });
     const ssIdx = args.indexOf('-ss');
     expect(args[ssIdx + 1]).toBe('400');
+    expect(args).toContain('-t');
+    expect(args[args.indexOf('-t') + 1]).toBe('60');
     expect(args).toContain('-start_number');
     expect(args[args.indexOf('-start_number') + 1]).toBe('100');
     expect(args).toContain('-hls_segment_filename');

@@ -93,6 +93,36 @@ describe('HLSStream.getSegment', () => {
     expect(onDisk.toString()).toBe('FAKE_TS_BYTES');
   });
 
+  it('produces on-demand segments with the playlist-advertised duration', async () => {
+    hls.shutdown();
+    const produceSegment = vi.fn(async () => Buffer.from('FULL_SEGMENT'));
+    hls = new HLSStream({
+      cacheDir,
+      ffmpegPath: 'ffmpeg',
+      hwaccel: 'none',
+      segmentDuration: 4,
+      produceSegment,
+      sessionSpawn: () => {
+        const p: any = new EventEmitter();
+        p.kill = vi.fn();
+        p.stdout = new EventEmitter();
+        p.stderr = new EventEmitter();
+        return p;
+      },
+    });
+
+    await hls.getSegment({
+      sceneId: 'sc-full',
+      profileId: '720p',
+      segmentName: 'segment_001.ts',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 9 },
+    });
+
+    const args = produceSegment.mock.calls[0][0].args;
+    expect(args[args.indexOf('-t') + 1]).toBe('4');
+  });
+
   it('rejects out-of-range segment indices', async () => {
     await expect(
       hls.getSegment({
