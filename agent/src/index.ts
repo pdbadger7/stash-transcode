@@ -523,7 +523,7 @@ app.get<{
       token,
     });
 
-    reply
+    return reply
       .header('Content-Type', remuxHlsStream.getPlaylistMimeType())
       .header('Cache-Control', 'no-cache')
       .send(playlist);
@@ -576,11 +576,11 @@ app.get<{
       return reply.code(404).send({ ok: false, error: 'Remux asset not found' });
     }
 
-    reply
+    return reply
       .header('Content-Type', remuxHlsStream.getAssetMimeType(assetName))
       .header('Cache-Control', 'public, max-age=3600')
       .header('Content-Length', String(asset.size))
-      .send(asset.stream);
+      .send(asset.data);
   } catch (err) {
     if (err instanceof RemuxNotReadyError) {
       return reply

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.9 - 2026-05-14
+
+- Serve remux fMP4 assets from validated bytes instead of the Fastify file-stream path that could return empty `200 OK` responses in production.
+- Treat completed remux caches with empty init or first segment assets as invalid so they are rebuilt before playback.
+
 ## 0.3.8 - 2026-05-14
 
 - Wait for remux fMP4 playlists to include a ready `EXT-X-MAP` init segment and first media segment before serving them to hls.js.

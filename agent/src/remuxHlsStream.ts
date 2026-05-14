@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess } from 'child_process';
-import { constants as fsConstants, createReadStream, promises as fs, type ReadStream } from 'fs';
+import { constants as fsConstants, promises as fs } from 'fs';
 import path from 'path';
 import { getMimeType } from './directStream.js';
 import type { SourceVideoMetadata } from './hlsStream.js';
@@ -35,7 +35,7 @@ export interface RemuxAssetInput {
 }
 
 export interface RemuxAsset {
-  stream: ReadStream;
+  data: Buffer;
   size: number;
 }
 
@@ -106,10 +106,15 @@ export class RemuxHLSStream {
       return null;
     }
 
-    const stat = await fs.stat(assetPath);
+    const data = await fs.readFile(assetPath);
+    if (data.length === 0) {
+      if (this.jobs.has(input.sceneId)) throw new RemuxNotReadyError();
+      return null;
+    }
+
     return {
-      stream: createReadStream(assetPath),
-      size: stat.size,
+      data,
+      size: data.length,
     };
   }
 
@@ -146,7 +151,7 @@ export class RemuxHLSStream {
     inputPath: string,
     sourceMetadata: SourceVideoMetadata
   ): Promise<{ job?: Promise<void> }> {
-    if (await this.isComplete(sceneId)) return {};
+    if (await this.hasReadyPlaylist(sceneId)) return {};
 
     const existing = this.jobs.get(sceneId);
     if (existing) return { job: existing };
@@ -187,14 +192,10 @@ export class RemuxHLSStream {
     }
   }
 
-  private async isComplete(sceneId: string): Promise<boolean> {
-    const playlistPath = path.join(this.outputDir(sceneId), 'master.m3u8');
-    try {
-      const playlist = await fs.readFile(playlistPath, 'utf8');
-      return playlist.includes('#EXT-X-ENDLIST');
-    } catch {
-      return false;
-    }
+  private async hasReadyPlaylist(sceneId: string): Promise<boolean> {
+    const outputDir = this.outputDir(sceneId);
+    const playlist = await readReadyPlaylist(path.join(outputDir, 'master.m3u8'), outputDir);
+    return playlist !== null;
   }
 
   private outputDir(sceneId: string): string {
