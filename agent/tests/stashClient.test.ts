@@ -7,7 +7,7 @@ describe('StashClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses a scene query that includes duration and source metadata when available', async () => {
+  it('uses a file-metadata query compatible with the Scene -> VideoFile schema', async () => {
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: {
         data: {
@@ -28,20 +28,21 @@ describe('StashClient', () => {
     expect(query).toContain('findScene(id: $id)');
     expect(query).toContain('files');
     expect(query).toContain('path');
+    expect(query).toContain('frame_rate');
     expect(query).toContain('duration');
     expect(query).toContain('width');
     expect(query).toContain('height');
-    expect(query).toContain('fps');
+    expect(query).not.toContain('\n      fps\n');
     expect(query).not.toContain('videoCodec');
     expect(query).not.toContain('audioCodec');
   });
 
-  it('falls back to progressively smaller scene queries when metadata fields are unsupported', async () => {
+  it('falls back to minimal query when file metadata fields are unsupported', async () => {
     const postSpy = vi
       .spyOn(axios, 'post')
       .mockResolvedValueOnce({
         data: {
-          errors: [{ message: 'Cannot query field "fps" on type "Scene"' }],
+          errors: [{ message: 'Cannot query field "frame_rate" on type "VideoFile"' }],
         },
       })
       .mockResolvedValueOnce({
@@ -65,10 +66,10 @@ describe('StashClient', () => {
     expect(postSpy).toHaveBeenCalledTimes(2);
     const firstQuery = (postSpy.mock.calls[0]?.[1] as { query: string }).query;
     const secondQuery = (postSpy.mock.calls[1]?.[1] as { query: string }).query;
-    expect(firstQuery).toContain('fps');
-    expect(secondQuery).not.toContain('fps');
-    expect(secondQuery).toContain('width');
-    expect(secondQuery).toContain('height');
+    expect(firstQuery).toContain('frame_rate');
+    expect(secondQuery).not.toContain('frame_rate');
+    expect(secondQuery).not.toContain('width');
+    expect(secondQuery).not.toContain('height');
   });
 
   it('returns null when GraphQL responds with errors and no scene', async () => {

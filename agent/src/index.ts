@@ -66,10 +66,10 @@ async function resolveSceneInputContext(sceneId: string): Promise<SceneInputCont
     sceneId: scene.id,
     inputPath: mappingResult.path,
     sourceMetadata: {
-      durationSeconds: scene.duration,
-      width: scene.width,
-      height: scene.height,
-      fps: scene.fps,
+      durationSeconds: file.duration,
+      width: file.width,
+      height: file.height,
+      fps: file.frame_rate,
     },
   };
 }
@@ -142,10 +142,10 @@ app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: strin
       scene_id: scene.id,
       mode: ['direct', 'hls'],
       path_mapped: true,
-      duration_seconds: scene.duration,
-      width: scene.width,
-      height: scene.height,
-      fps: scene.fps,
+      duration_seconds: file.duration,
+      width: file.width,
+      height: file.height,
+      fps: file.frame_rate,
     };
   }
 );

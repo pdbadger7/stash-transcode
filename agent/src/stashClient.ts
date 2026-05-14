@@ -6,41 +6,13 @@ const STASH_SCENE_QUERY_WITH_SOURCE_METADATA = `
   query FindScene($id: ID!) {
     findScene(id: $id) {
       id
-      duration
-      width
-      height
-      fps
       files {
         id
         path
-      }
-    }
-  }
-`;
-
-const STASH_SCENE_QUERY_WITH_DIMENSIONS = `
-  query FindScene($id: ID!) {
-    findScene(id: $id) {
-      id
-      duration
-      width
-      height
-      files {
-        id
-        path
-      }
-    }
-  }
-`;
-
-const STASH_SCENE_QUERY_WITH_DURATION = `
-  query FindScene($id: ID!) {
-    findScene(id: $id) {
-      id
-      duration
-      files {
-        id
-        path
+        duration
+        width
+        height
+        frame_rate
       }
     }
   }
@@ -101,8 +73,6 @@ export class StashClient {
       for (const candidateId of idCandidates) {
         const queryFallbacks = [
           STASH_SCENE_QUERY_WITH_SOURCE_METADATA,
-          STASH_SCENE_QUERY_WITH_DIMENSIONS,
-          STASH_SCENE_QUERY_WITH_DURATION,
           STASH_SCENE_QUERY_MINIMAL,
         ];
 

@@ -2,15 +2,15 @@ export interface StashScene {
   id: string;
   title: string;
   files: StashFile[];
-  duration?: number;
-  width?: number;
-  height?: number;
-  fps?: number;
 }
 
 export interface StashFile {
   id: string;
   path: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  frame_rate?: number;
 }
 
 export interface ProbeResponse {
