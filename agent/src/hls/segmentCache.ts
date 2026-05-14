@@ -1,4 +1,4 @@
-import { existsSync, promises as fs } from 'fs';
+import { createReadStream, existsSync, promises as fs, type ReadStream, type Stats } from 'fs';
 import path from 'path';
 
 const SAFE_ID = /^[A-Za-z0-9_.-]+$/;
@@ -18,7 +18,51 @@ export class SegmentCache {
   }
 
   async has(sceneId: string, profileId: string, index: number): Promise<boolean> {
-    return existsSync(this.pathFor(sceneId, profileId, index));
+    return (await this.stat(sceneId, profileId, index)) !== null;
+  }
+
+  async stat(sceneId: string, profileId: string, index: number): Promise<Stats | null> {
+    try {
+      const stat = await fs.stat(this.pathFor(sceneId, profileId, index));
+      return stat.isFile() ? stat : null;
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+  }
+
+  createReadStream(sceneId: string, profileId: string, index: number): ReadStream {
+    return createReadStream(this.pathFor(sceneId, profileId, index));
+  }
+
+  async openAsset(
+    sceneId: string,
+    profileId: string,
+    index: number
+  ): Promise<{ stream: ReadStream; size: number } | null> {
+    const stat = await this.stat(sceneId, profileId, index);
+    if (!stat) return null;
+    return {
+      stream: this.createReadStream(sceneId, profileId, index),
+      size: stat.size,
+    };
+  }
+
+  async waitForAsset(
+    sceneId: string,
+    profileId: string,
+    index: number,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): Promise<{ stream: ReadStream; size: number } | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (signal?.aborted) return null;
+      const asset = await this.openAsset(sceneId, profileId, index);
+      if (asset) return asset;
+      await sleep(60, signal);
+    }
+    return null;
   }
 
   async read(sceneId: string, profileId: string, index: number): Promise<Buffer> {
@@ -31,6 +75,24 @@ export class SegmentCache {
     const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
     await fs.writeFile(tmp, data);
     await fs.rename(tmp, target);
+  }
+
+  async produceAtomic(
+    sceneId: string,
+    profileId: string,
+    index: number,
+    producer: (tmpPath: string) => Promise<void>
+  ): Promise<void> {
+    const target = this.pathFor(sceneId, profileId, index);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const tmp = `${target}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+    try {
+      await producer(tmp);
+      await fs.rename(tmp, target);
+    } catch (err) {
+      await fs.rm(tmp, { force: true });
+      throw err;
+    }
   }
 
   profileDir(sceneId: string, profileId: string): string {
@@ -61,4 +123,26 @@ export class SegmentCache {
       }
     }
   }
+}
+
+function isNotFound(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && err.code === 'ENOENT';
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true }
+    );
+  });
 }

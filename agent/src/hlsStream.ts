@@ -1,7 +1,12 @@
-import path from 'path';
+import { promises as fs, type ReadStream } from 'fs';
 import { SegmentCache } from './hls/segmentCache.js';
 import { SessionManager, type SpawnFn } from './hls/sessionManager.js';
-import { produceSegment as defaultProduceSegment, type ProduceSegmentInput } from './hls/segmentProducer.js';
+import {
+  produceSegment as defaultProduceSegment,
+  produceSegmentToFile as defaultProduceSegmentToFile,
+  type ProduceSegmentInput,
+  type ProduceSegmentToFileInput,
+} from './hls/segmentProducer.js';
 import {
   buildMasterPlaylist,
   buildVariantPlaylist,
@@ -44,6 +49,7 @@ export interface HLSConfig {
   hwaccelDeviceExists?: (path: string) => boolean;
   sessionWaitMs?: number;
   produceSegment?: (input: ProduceSegmentInput) => Promise<Buffer>;
+  produceSegmentToFile?: (input: ProduceSegmentToFileInput) => Promise<void>;
   sessionSpawn?: SpawnFn;
 }
 
@@ -56,6 +62,11 @@ export interface GetSegmentInput {
   abortSignal?: AbortSignal;
 }
 
+export interface SegmentAsset {
+  stream: ReadStream;
+  size: number;
+}
+
 const SEGMENT_RE = /^segment_(\d{3,})\.ts$/;
 
 export class HLSStream {
@@ -63,6 +74,8 @@ export class HLSStream {
   private readonly cache: SegmentCache;
   private readonly sessions: SessionManager;
   private readonly produceSegmentFn: (input: ProduceSegmentInput) => Promise<Buffer>;
+  private readonly produceSegmentToFileFn: (input: ProduceSegmentToFileInput) => Promise<void>;
+  private readonly inFlightSegments = new Map<string, Promise<void>>();
   private readonly enableDebug: boolean;
   private readonly cfg: {
     segmentDuration: number;
@@ -82,6 +95,7 @@ export class HLSStream {
     this.cache = new SegmentCache(config.cacheDir);
     this.enableDebug = config.enableDebug ?? false;
     this.produceSegmentFn = config.produceSegment ?? defaultProduceSegment;
+    this.produceSegmentToFileFn = config.produceSegmentToFile ?? defaultProduceSegmentToFile;
     this.cfg = {
       segmentDuration: config.segmentDuration || 4,
       lookaheadSegments: config.lookaheadSegments ?? 15,
@@ -145,6 +159,16 @@ export class HLSStream {
   }
 
   async getSegment(input: GetSegmentInput): Promise<Buffer | null> {
+    const asset = await this.getSegmentAsset(input);
+    if (!asset) return null;
+    const chunks: Buffer[] = [];
+    for await (const chunk of asset.stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  async getSegmentAsset(input: GetSegmentInput): Promise<SegmentAsset | null> {
     const profile = this.resolveProfile(input.profileId);
     const index = this.parseSegmentName(input.segmentName);
     const duration = input.sourceMetadata.durationSeconds;
@@ -159,8 +183,9 @@ export class HLSStream {
       throw new Error(`segment ${index} out of range (count=${plan.count})`);
     }
 
-    if (await this.cache.has(input.sceneId, input.profileId, index)) {
-      return this.cache.read(input.sceneId, input.profileId, index);
+    const cached = await this.cache.openAsset(input.sceneId, input.profileId, index);
+    if (cached) {
+      return cached;
     }
 
     const startSeconds = index * this.cfg.segmentDuration;
@@ -169,7 +194,8 @@ export class HLSStream {
     const sessionHit = await this.waitForSessionSegment(
       input.sceneId,
       input.profileId,
-      index
+      index,
+      input.abortSignal
     );
     if (sessionHit) return sessionHit;
 
@@ -180,58 +206,26 @@ export class HLSStream {
         `[HLS] selected hw mode=${mode}${selection.hwaccelDevice ? ` device=${selection.hwaccelDevice}` : ''} scene=${input.sceneId} profile=${input.profileId} segment=${index}`
       );
     }
-    const args = buildSingleSegmentArgs({
-      inputPath: input.inputPath,
-      profile,
-      startSeconds,
-      durationSeconds: segDuration,
-      mode,
-      segmentDuration: this.cfg.segmentDuration,
-      hwaccelDevice: selection.hwaccelDevice,
-      sourceVideoCodec: input.sourceMetadata.videoCodec,
-    });
-
-    const timeoutCtrl = new AbortController();
-    const timer = setTimeout(() => timeoutCtrl.abort(), this.cfg.singleSegmentTimeoutMs);
-    const composite = anyAbort([timeoutCtrl.signal, input.abortSignal]);
-    let bytes: Buffer;
     let sessionMode: ResolvedHwAccelMode = mode;
-    try {
-      try {
-        bytes = await this.produceSegmentFn({
-          ffmpegPath: this.cfg.ffmpegPath,
-          args,
-          signal: composite,
-        });
-      } catch (err) {
-        if (mode !== 'none' && !timeoutCtrl.signal.aborted) {
-          console.warn(
-            `[HLS] hw mode ${mode} failed for scene=${input.sceneId} profile=${input.profileId} segment=${index}; falling back to software: ${formatErrorReason(err)}`
-          );
+    const key = `${input.sceneId}:${input.profileId}:${index}`;
+    let job = this.inFlightSegments.get(key);
+    if (!job) {
+      job = this.produceSegmentToCache({
+        input,
+        profile,
+        index,
+        startSeconds,
+        durationSeconds: segDuration,
+        mode,
+        selection,
+        onFallback: () => {
           sessionMode = 'none';
-          bytes = await this.produceSegmentFn({
-            ffmpegPath: this.cfg.ffmpegPath,
-            args: buildSingleSegmentArgs({
-              inputPath: input.inputPath,
-              profile,
-              startSeconds,
-              durationSeconds: segDuration,
-              mode: 'none',
-              segmentDuration: this.cfg.segmentDuration,
-              hwaccelDevice: selection.hwaccelDevice,
-              sourceVideoCodec: input.sourceMetadata.videoCodec,
-            }),
-            signal: composite,
-          });
-        } else {
-          throw err;
-        }
-      }
-    } finally {
-      clearTimeout(timer);
+        },
+      });
+      this.inFlightSegments.set(key, job);
+      job.finally(() => this.inFlightSegments.delete(key)).catch(() => undefined);
     }
-
-    await this.cache.write(input.sceneId, input.profileId, index, bytes);
+    await job;
 
     if (index + 1 < plan.count) {
       this.sessions.noteRequest({
@@ -245,7 +239,7 @@ export class HLSStream {
       });
     }
 
-    return bytes;
+    return this.cache.openAsset(input.sceneId, input.profileId, index);
   }
 
   getActiveTranscodes() {
@@ -273,17 +267,93 @@ export class HLSStream {
   private async waitForSessionSegment(
     sceneId: string,
     profileId: string,
-    index: number
-  ): Promise<Buffer | null> {
-    if (!this.sessions.canProduce(sceneId, profileId, index)) return null;
-    const deadline = Date.now() + this.cfg.sessionWaitMs;
-    while (Date.now() < deadline) {
-      if (await this.cache.has(sceneId, profileId, index)) {
-        return this.cache.read(sceneId, profileId, index);
-      }
-      await sleep(75);
+    index: number,
+    signal?: AbortSignal
+  ): Promise<SegmentAsset | null> {
+    if (!this.sessions.canProduce(sceneId, profileId, index)) {
+      this.sessions.killStaleForSceneProfile(sceneId, profileId, index);
+      return null;
     }
-    return null;
+    return this.cache.waitForAsset(sceneId, profileId, index, this.cfg.sessionWaitMs, signal);
+  }
+
+  private async produceSegmentToCache(input: {
+    input: GetSegmentInput;
+    profile: HLSProfile;
+    index: number;
+    startSeconds: number;
+    durationSeconds: number;
+    mode: ResolvedHwAccelMode;
+    selection: HwAccelSelection;
+    onFallback: () => void;
+  }): Promise<void> {
+    const timeoutCtrl = new AbortController();
+    const timer = setTimeout(() => timeoutCtrl.abort(), this.cfg.singleSegmentTimeoutMs);
+    const composite = anyAbort([timeoutCtrl.signal, input.input.abortSignal]);
+    try {
+      try {
+        await this.produceSingleSegmentFile(input, input.mode, composite);
+      } catch (err) {
+        if (input.mode !== 'none' && !timeoutCtrl.signal.aborted) {
+          console.warn(
+            `[HLS] hw mode ${input.mode} failed for scene=${input.input.sceneId} profile=${input.input.profileId} segment=${input.index}; falling back to software: ${formatErrorReason(err)}`
+          );
+          input.onFallback();
+          await this.produceSingleSegmentFile(input, 'none', composite);
+        } else {
+          throw err;
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async produceSingleSegmentFile(
+    input: {
+      input: GetSegmentInput;
+      profile: HLSProfile;
+      index: number;
+      startSeconds: number;
+      durationSeconds: number;
+      selection: HwAccelSelection;
+    },
+    mode: ResolvedHwAccelMode,
+    signal: AbortSignal
+  ): Promise<void> {
+    const args = buildSingleSegmentArgs({
+      inputPath: input.input.inputPath,
+      profile: input.profile,
+      startSeconds: input.startSeconds,
+      durationSeconds: input.durationSeconds,
+      mode,
+      segmentDuration: this.cfg.segmentDuration,
+      hwaccelDevice: input.selection.hwaccelDevice,
+      sourceVideoCodec: input.input.sourceMetadata.videoCodec,
+    });
+
+    await this.cache.produceAtomic(
+      input.input.sceneId,
+      input.input.profileId,
+      input.index,
+      async (tmpPath) => {
+        if (this.produceSegmentFn !== defaultProduceSegment) {
+          const bytes = await this.produceSegmentFn({
+            ffmpegPath: this.cfg.ffmpegPath,
+            args,
+            signal,
+          });
+          await fs.writeFile(tmpPath, bytes);
+          return;
+        }
+        await this.produceSegmentToFileFn({
+          ffmpegPath: this.cfg.ffmpegPath,
+          args,
+          outputPath: tmpPath,
+          signal,
+        });
+      }
+    );
   }
 
   private parseSegmentName(name: string): number {
@@ -311,10 +381,6 @@ export class HLSStream {
 function formatErrorReason(err: unknown): string {
   if (err instanceof Error) return err.message.split('\n')[0] || err.name;
   return String(err);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function anyAbort(signals: (AbortSignal | undefined)[]): AbortSignal {

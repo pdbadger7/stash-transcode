@@ -128,6 +128,26 @@ export class SessionManager {
     return this.findCoveringSession(sceneId, profileId, index) !== undefined;
   }
 
+  killStaleForSceneProfile(sceneId: string, profileId: string, requestedIndex: number): void {
+    if (this.findCoveringSession(sceneId, profileId, requestedIndex)) return;
+
+    const farAwaySegments = this.cfg.lookaheadSegments * 2;
+    const minIdleMs = 3_000;
+    const now = Date.now();
+
+    for (const session of this.sessions.values()) {
+      if (session.sceneId !== sceneId || session.profileId !== profileId) continue;
+      const rangeStart = session.head;
+      const rangeEnd = session.head + this.cfg.lookaheadSegments - 1;
+      const distance =
+        requestedIndex < rangeStart ? rangeStart - requestedIndex : requestedIndex - rangeEnd;
+      if (distance > farAwaySegments && now - session.lastActivity > minIdleMs) {
+        this.killSession(session);
+        this.sessions.delete(session.key);
+      }
+    }
+  }
+
   shutdown(): void {
     for (const session of this.sessions.values()) this.killSession(session);
     this.sessions.clear();

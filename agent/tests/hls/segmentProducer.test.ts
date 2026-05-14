@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Readable } from 'stream';
 import { EventEmitter } from 'events';
-import { produceSegment } from '../../src/hls/segmentProducer.js';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
+import { produceSegment, produceSegmentToFile } from '../../src/hls/segmentProducer.js';
 
 function fakeSpawn(stdoutChunks: Buffer[], exitCode = 0, stderrChunks: Buffer[] = []) {
   const proc: any = new EventEmitter();
@@ -46,5 +49,35 @@ describe('produceSegment', () => {
     ac.abort();
     await expect(promise).rejects.toThrow(/aborted/i);
     expect(proc.kill).toHaveBeenCalled();
+  });
+});
+
+describe('produceSegmentToFile', () => {
+  it('writes stdout to a file without returning a Buffer', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'produce-file-'));
+    const outputPath = path.join(dir, 'segment.tmp');
+    const spawn = vi.fn(() => fakeSpawn([Buffer.from('AB'), Buffer.from('CD')]));
+
+    await produceSegmentToFile({
+      ffmpegPath: 'ffmpeg',
+      args: ['-version'],
+      outputPath,
+      spawn,
+    });
+
+    expect((await fs.readFile(outputPath)).toString()).toBe('ABCD');
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('removes the output file on failure', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'produce-file-'));
+    const outputPath = path.join(dir, 'segment.tmp');
+    const spawn = vi.fn(() => fakeSpawn([Buffer.from('partial')], 1, [Buffer.from('boom')]));
+
+    await expect(
+      produceSegmentToFile({ ffmpegPath: 'ffmpeg', args: [], outputPath, spawn })
+    ).rejects.toThrow(/exit code 1/);
+    await expect(fs.access(outputPath)).rejects.toThrow();
+    await fs.rm(dir, { recursive: true, force: true });
   });
 });

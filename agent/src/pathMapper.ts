@@ -1,4 +1,4 @@
-import { posix, normalize } from 'path';
+import { normalize } from 'path';
 import type { PathMapping } from './types.js';
 
 export class PathMapper {

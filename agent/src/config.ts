@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { PathMapping, Config } from './types.js';
+import type { Config } from './types.js';
 
 const pathMappingSchema = z
   .string()

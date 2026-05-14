@@ -28,6 +28,24 @@ describe('SegmentCache', () => {
     expect(await cache.read('scene1', '720p', 5)).toEqual(buf);
   });
 
+  it('opens a segment as a stream with size metadata', async () => {
+    const buf = Buffer.from('stream-me');
+    await cache.write('scene1', '720p', 1, buf);
+    const asset = await cache.openAsset('scene1', '720p', 1);
+    expect(asset?.size).toBe(buf.length);
+    const chunks: Buffer[] = [];
+    for await (const chunk of asset!.stream) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks)).toEqual(buf);
+  });
+
+  it('produces a segment atomically through a temp file', async () => {
+    await cache.produceAtomic('scene1', '720p', 2, async (tmpPath) => {
+      expect(tmpPath.endsWith('.tmp')).toBe(true);
+      await fs.writeFile(tmpPath, 'atomic');
+    });
+    expect((await cache.read('scene1', '720p', 2)).toString()).toBe('atomic');
+  });
+
   it('rejects path traversal attempts', async () => {
     await expect(cache.read('scene1', '../evil', 0)).rejects.toThrow();
     await expect(cache.read('../etc/passwd', '720p', 0)).rejects.toThrow();

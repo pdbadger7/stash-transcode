@@ -5,7 +5,7 @@ import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
-import { HLSStream, type SourceVideoMetadata } from './hlsStream.js';
+import { HLSStream } from './hlsStream.js';
 import {
   RemuxHLSStream,
   RemuxNotEligibleError,
@@ -15,10 +15,10 @@ import { DEFAULT_HLS_PROFILES } from './hls/profiles.js';
 import {
   parseRangeHeader,
   getFileSize,
-  readFileRange,
-  createRangeHeaders,
+  createFileReadStream,
   getMimeType,
 } from './directStream.js';
+import { SceneContextCache, type SceneInputContext } from './sceneContextCache.js';
 
 const config = loadConfig();
 const stashClient = new StashClient(
@@ -50,12 +50,6 @@ const remuxHlsStream = new RemuxHLSStream({
   enableDebug: process.env.DEBUG === 'true',
 });
 
-type SceneInputContext = {
-  sceneId: string;
-  inputPath: string;
-  sourceMetadata: SourceVideoMetadata;
-};
-
 async function resolveSceneInputContext(sceneId: string): Promise<SceneInputContext | null> {
   const scene = await stashClient.getScene(sceneId);
   if (!scene || !scene.files || scene.files.length === 0) {
@@ -85,6 +79,13 @@ async function resolveSceneInputContext(sceneId: string): Promise<SceneInputCont
       videoCodec: file.video_codec,
     },
   };
+}
+
+const SCENE_CONTEXT_CACHE_TTL_MS = 10 * 60 * 1000;
+const sceneContextCache = new SceneContextCache(SCENE_CONTEXT_CACHE_TTL_MS);
+
+async function getSceneInputContextCached(sceneId: string): Promise<SceneInputContext | null> {
+  return sceneContextCache.getOrResolve(sceneId, () => resolveSceneInputContext(sceneId));
 }
 
 const app = Fastify({
@@ -237,6 +238,16 @@ app.get<{
       // Handle Range request
       const rangeResult = parseRangeHeader(rangeHeader, fileSize);
       if (!rangeResult.success) {
+        if (rangeResult.statusCode === 416) {
+          return reply
+            .code(416)
+            .header('Content-Range', `bytes */${fileSize}`)
+            .header('Accept-Ranges', 'bytes')
+            .send({
+              ok: false,
+              error: rangeResult.error,
+            });
+        }
         return reply.code(400).send({
           ok: false,
           error: rangeResult.error,
@@ -244,7 +255,10 @@ app.get<{
       }
 
       const { start = 0, end = fileSize - 1 } = rangeResult;
-      const buffer = await readFileRange(filePath, start, end);
+      const stream = createFileReadStream(filePath, { start, end });
+      request.raw.on('close', () => {
+        if (!request.raw.complete) stream.destroy();
+      });
 
       reply
         .code(206)
@@ -252,15 +266,20 @@ app.get<{
         .header('Content-Length', String(end - start + 1))
         .header('Content-Range', `bytes ${start}-${end}/${fileSize}`)
         .header('Accept-Ranges', 'bytes')
-        .send(buffer);
+        .header('Cache-Control', 'public, max-age=3600')
+        .send(stream);
     } else {
       // Full file response
-      const buffer = await fs.readFile(filePath);
+      const stream = createFileReadStream(filePath);
+      request.raw.on('close', () => {
+        if (!request.raw.complete) stream.destroy();
+      });
       reply
         .header('Content-Type', getMimeType(filePath))
         .header('Content-Length', String(fileSize))
         .header('Accept-Ranges', 'bytes')
-        .send(buffer);
+        .header('Cache-Control', 'public, max-age=3600')
+        .send(stream);
     }
   }
 );
@@ -277,7 +296,7 @@ app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: strin
     }
 
     try {
-      const sceneContext = await resolveSceneInputContext(id);
+      const sceneContext = await getSceneInputContextCached(id);
       if (!sceneContext) {
         return reply.code(404).send({ ok: false, error: 'Scene not found' });
       }
@@ -316,7 +335,7 @@ app.get<{
   }
 
   try {
-    const sceneContext = await resolveSceneInputContext(id);
+    const sceneContext = await getSceneInputContextCached(id);
     if (!sceneContext) {
       return reply.code(404).send({ ok: false, error: 'Scene not found' });
     }
@@ -362,7 +381,7 @@ app.get<{
       });
     }
 
-    const sceneContext = await resolveSceneInputContext(id);
+    const sceneContext = await getSceneInputContextCached(id);
     if (!sceneContext) {
       return reply.code(404).send({ ok: false, error: 'Scene not found' });
     }
@@ -373,7 +392,7 @@ app.get<{
     });
 
     try {
-      const segment = await hlsStream.getSegment({
+      const asset = await hlsStream.getSegmentAsset({
         sceneId: id,
         profileId: profile,
         segmentName,
@@ -381,14 +400,17 @@ app.get<{
         sourceMetadata: sceneContext.sourceMetadata,
         abortSignal: ac.signal,
       });
-      if (!segment) {
+      if (!asset) {
         return reply.code(404).send({ ok: false, error: 'Segment not found' });
       }
+      request.raw.on('close', () => {
+        if (!request.raw.complete) asset.stream.destroy();
+      });
       reply
         .header('Content-Type', hlsStream.getSegmentMimeType(segmentName))
         .header('Cache-Control', 'public, max-age=3600')
-        .header('Content-Length', String(segment.length))
-        .send(segment);
+        .header('Content-Length', String(asset.size))
+        .send(asset.stream);
     } catch (err) {
       if (ac.signal.aborted) return;
       console.error(`Segment ${segmentName} for ${id}/${profile} failed:`, err);
@@ -418,7 +440,7 @@ app.get<{
     });
   }
 
-  const sceneContext = await resolveSceneInputContext(id);
+  const sceneContext = await getSceneInputContextCached(id);
   if (!sceneContext) {
     return reply.code(404).send({ ok: false, error: 'Scene not found' });
   }
@@ -432,7 +454,7 @@ app.get<{
     const fallbackProfile =
       DEFAULT_HLS_PROFILES.find((profile) => profile.id === '720p')?.id ??
       DEFAULT_HLS_PROFILES[0].id;
-    const segment = await hlsStream.getSegment({
+    const asset = await hlsStream.getSegmentAsset({
       sceneId: id,
       profileId: fallbackProfile,
       segmentName,
@@ -441,14 +463,18 @@ app.get<{
       abortSignal: ac.signal,
     });
 
-    if (!segment) {
+    if (!asset) {
       return reply.code(404).send({ ok: false, error: 'Segment not found' });
     }
 
+    request.raw.on('close', () => {
+      if (!request.raw.complete) asset.stream.destroy();
+    });
     reply
       .header('Content-Type', hlsStream.getSegmentMimeType(segmentName))
       .header('Cache-Control', 'public, max-age=3600')
-      .send(segment);
+      .header('Content-Length', String(asset.size))
+      .send(asset.stream);
   } catch (err) {
     if (ac.signal.aborted) return;
     console.error(`Failed to serve segment ${segmentName} for scene ${id}:`, err);
@@ -471,7 +497,7 @@ app.get<{
   }
 
   try {
-    const sceneContext = await resolveSceneInputContext(id);
+    const sceneContext = await getSceneInputContextCached(id);
     if (!sceneContext) {
       return reply.code(404).send({ ok: false, error: 'Scene not found' });
     }

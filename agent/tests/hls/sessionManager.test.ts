@@ -122,6 +122,32 @@ describe('SessionManager', () => {
     expect(procs[0].kill).toHaveBeenCalled();
     expect(m.activeSessions().map((s) => s.sceneId).sort()).toEqual(['b', 'c']);
   });
+
+  it('kills stale sessions for the same scene/profile after a far seek', () => {
+    vi.useFakeTimers();
+    const procs: any[] = [];
+    const spawn = vi.fn(() => {
+      const p = makeProc();
+      procs.push(p);
+      return p;
+    });
+    const m = new SessionManager({
+      ffmpegPath: 'ffmpeg',
+      segmentDuration: 4,
+      lookaheadSegments: 10,
+      maxSessions: 4,
+      spawn,
+      buildArgs: () => ['ARGS'],
+    });
+
+    m.noteRequest({ sceneId: 'sc', profileId: '720p', index: 0, inputPath: '/x.mp4', mode: 'none', profile: anyProfile() });
+    vi.advanceTimersByTime(3_001);
+    m.killStaleForSceneProfile('sc', '720p', 100);
+
+    expect(procs[0].kill).toHaveBeenCalled();
+    expect(m.activeSessions()).toHaveLength(0);
+    vi.useRealTimers();
+  });
 });
 
 function anyProfile() {

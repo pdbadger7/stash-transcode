@@ -1,13 +1,17 @@
-import { promises as fs } from 'fs';
-import type { RangeRequest } from './types.js';
-
-const CHUNK_SIZE = 1024 * 1024; // 1MB chunks for Range requests
+import { createReadStream, promises as fs, type ReadStream } from 'fs';
 
 export interface RangeParseResult {
   success: boolean;
   start?: number;
   end?: number;
   error?: string;
+  statusCode?: 400 | 416;
+}
+
+export interface FileRange {
+  start: number;
+  end: number;
+  size: number;
 }
 
 /**
@@ -19,16 +23,19 @@ export function parseRangeHeader(
   fileSize: number
 ): RangeParseResult {
   if (!rangeHeader.startsWith('bytes=')) {
-    return { success: false, error: 'Invalid range format' };
+    return { success: false, error: 'Invalid range format', statusCode: 400 };
   }
 
   const ranges = rangeHeader.slice(6).split(',')[0].trim();
+  if (!ranges || ranges.split('-').length !== 2) {
+    return { success: false, error: 'Invalid range format', statusCode: 400 };
+  }
 
   if (ranges.startsWith('-')) {
     // Suffix range: -500 means last 500 bytes
     const length = parseInt(ranges.slice(1), 10);
-    if (isNaN(length)) {
-      return { success: false, error: 'Invalid range length' };
+    if (!Number.isFinite(length) || length <= 0) {
+      return { success: false, error: 'Invalid range length', statusCode: 400 };
     }
     return {
       success: true,
@@ -40,15 +47,15 @@ export function parseRangeHeader(
   const [startStr, endStr] = ranges.split('-');
   const start = parseInt(startStr, 10);
 
-  if (isNaN(start)) {
-    return { success: false, error: 'Invalid range start' };
+  if (!/^\d+$/.test(startStr) || !Number.isFinite(start)) {
+    return { success: false, error: 'Invalid range start', statusCode: 400 };
   }
 
   let end = fileSize - 1;
-  if (endStr) {
+  if (endStr !== '') {
     end = parseInt(endStr, 10);
-    if (isNaN(end)) {
-      return { success: false, error: 'Invalid range end' };
+    if (!/^\d+$/.test(endStr) || !Number.isFinite(end)) {
+      return { success: false, error: 'Invalid range end', statusCode: 400 };
     }
   }
 
@@ -56,7 +63,8 @@ export function parseRangeHeader(
   if (start > end || start >= fileSize) {
     return {
       success: false,
-      error: 'Range out of bounds',
+      error: 'Range not satisfiable',
+      statusCode: 416,
     };
   }
 
@@ -75,23 +83,11 @@ export async function getFileSize(filePath: string): Promise<number> {
   return stat.size;
 }
 
-/**
- * Read file chunk for Range request
- */
-export async function readFileRange(
+export function createFileReadStream(
   filePath: string,
-  start: number,
-  end: number
-): Promise<Buffer> {
-  const fd = await fs.open(filePath, 'r');
-  try {
-    const length = end - start + 1;
-    const buffer = Buffer.alloc(length);
-    await fd.read(buffer, 0, length, start);
-    return buffer;
-  } finally {
-    await fd.close();
-  }
+  range?: { start?: number; end?: number }
+): ReadStream {
+  return createReadStream(filePath, range);
 }
 
 /**

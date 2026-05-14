@@ -66,6 +66,12 @@ describe('HLSStream.getVariantPlaylist', () => {
 });
 
 describe('HLSStream.getSegment', () => {
+  async function readAsset(asset: { stream: NodeJS.ReadableStream } | null | undefined): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of asset!.stream) chunks.push(Buffer.from(chunk));
+    return Buffer.concat(chunks);
+  }
+
   it('returns cached bytes when the segment already exists on disk', async () => {
     const target = path.join(cacheDir, 'sc1', '720p', 'segment_005.ts');
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -80,6 +86,21 @@ describe('HLSStream.getSegment', () => {
     expect(out?.toString()).toBe('CACHED');
   });
 
+  it('returns cached segment assets as streams with content length metadata', async () => {
+    const target = path.join(cacheDir, 'sc1', '720p', 'segment_006.ts');
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, Buffer.from('CACHED_STREAM'));
+    const asset = await hls.getSegmentAsset({
+      sceneId: 'sc1',
+      profileId: '720p',
+      segmentName: 'segment_006.ts',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 60 },
+    });
+    expect(asset?.size).toBe('CACHED_STREAM'.length);
+    expect((await readAsset(asset)).toString()).toBe('CACHED_STREAM');
+  });
+
   it('produces a missing segment on demand and caches it', async () => {
     const out = await hls.getSegment({
       sceneId: 'sc1',
@@ -91,6 +112,50 @@ describe('HLSStream.getSegment', () => {
     expect(out?.toString()).toBe('FAKE_TS_BYTES');
     const onDisk = await fs.readFile(path.join(cacheDir, 'sc1', '720p', 'segment_002.ts'));
     expect(onDisk.toString()).toBe('FAKE_TS_BYTES');
+  });
+
+  it('deduplicates concurrent production for the same missing segment', async () => {
+    hls.shutdown();
+    let release: (() => void) | undefined;
+    const blocker = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const produceSegment = vi.fn(async () => {
+      await blocker;
+      return Buffer.from('ONE_JOB');
+    });
+    hls = new HLSStream({
+      cacheDir,
+      ffmpegPath: 'ffmpeg',
+      hwaccel: 'none',
+      segmentDuration: 4,
+      sessionWaitMs: 1,
+      produceSegment,
+      sessionSpawn: () => {
+        const p: any = new EventEmitter();
+        p.kill = vi.fn();
+        p.stdout = new EventEmitter();
+        p.stderr = new EventEmitter();
+        return p;
+      },
+    });
+
+    const input = {
+      sceneId: 'sc-dedupe',
+      profileId: '720p',
+      segmentName: 'segment_002.ts',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 60 },
+    };
+    const first = hls.getSegmentAsset(input);
+    const second = hls.getSegmentAsset(input);
+    await Promise.resolve();
+    release!();
+    const [firstAsset, secondAsset] = await Promise.all([first, second]);
+
+    expect(produceSegment).toHaveBeenCalledTimes(1);
+    expect((await readAsset(firstAsset)).toString()).toBe('ONE_JOB');
+    expect((await readAsset(secondAsset)).toString()).toBe('ONE_JOB');
   });
 
   it('produces on-demand segments with the playlist-advertised duration', async () => {
