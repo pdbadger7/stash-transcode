@@ -43,8 +43,44 @@ describe('HLSStream', () => {
     );
     expect(playlist).toContain('#EXTM3U');
     expect(playlist).toContain('#EXT-X-STREAM-INF');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/4320p/master.m3u8');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/2160p/master.m3u8');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/1440p/master.m3u8');
     expect(playlist).toContain('/stash/scene/scene-123/variant/1080p/master.m3u8');
     expect(playlist).toContain('/stash/scene/scene-123/variant/720p/master.m3u8');
+  });
+
+  it('should only advertise variants that do not exceed source resolution', async () => {
+    const playlist = await hlsStream.getMasterPlaylist(
+      'scene-123',
+      '/input/video.mkv',
+      undefined,
+      undefined,
+      { width: 2560, height: 1440 }
+    );
+
+    expect(playlist).toContain('/stash/scene/scene-123/variant/1440p/master.m3u8');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/1080p/master.m3u8');
+    expect(playlist).not.toContain('/stash/scene/scene-123/variant/2160p/master.m3u8');
+    expect(playlist).not.toContain('/stash/scene/scene-123/variant/4320p/master.m3u8');
+  });
+
+  it('should clamp variant resolution and expose source fps in master playlist', async () => {
+    const playlist = await hlsStream.getMasterPlaylist(
+      'scene-123',
+      '/input/video.mkv',
+      undefined,
+      undefined,
+      {
+        width: 1280,
+        height: 720,
+        fps: 23.976,
+      }
+    );
+
+    expect(playlist).not.toContain('RESOLUTION=1920x1080');
+    expect(playlist).toContain('RESOLUTION=1280x720');
+    expect(playlist).toContain('FRAME-RATE=23.976');
   });
 
   it('should throw while variant playlist has no segments yet', async () => {
@@ -55,6 +91,22 @@ describe('HLSStream', () => {
         '/input/video.mkv'
       )
     ).rejects.toBeInstanceOf(VariantPlaylistNotReadyError);
+  });
+
+  it('should generate a synthetic VOD playlist from duration metadata while transcoding starts', async () => {
+    const playlist = await hlsStream.getVariantPlaylist(
+      'scene-123',
+      '720p',
+      '/input/video.mkv',
+      undefined,
+      { durationSeconds: 10 }
+    );
+
+    expect(playlist).toContain('#EXT-X-PLAYLIST-TYPE:VOD');
+    expect(playlist).toContain('#EXT-X-ENDLIST');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/720p/segment_000.ts');
+    expect(playlist).toContain('/stash/scene/scene-123/variant/720p/segment_002.ts');
+    expect(playlist.match(/#EXTINF:/g)?.length).toBe(3);
   });
 
   it('should rewrite variant playlist segment URIs to absolute variant paths', async () => {
@@ -116,7 +168,11 @@ describe('HLSStream', () => {
   });
 
   it('should build ffmpeg args for no hardware acceleration', () => {
-    const args = hlsStream['buildFFmpegArgs']('/input/video.mkv', tmpDir, DEFAULT_HLS_PROFILES[1], 'none');
+    const profile720 = DEFAULT_HLS_PROFILES.find((profile) => profile.id === '720p');
+    if (!profile720) {
+      throw new Error('720p profile missing');
+    }
+    const args = hlsStream['buildFFmpegArgs']('/input/video.mkv', tmpDir, profile720, 'none');
     expect(args).toContain('-i');
     expect(args).toContain('/input/video.mkv');
     expect(args).toContain('-c:v');
@@ -127,10 +183,20 @@ describe('HLSStream', () => {
     expect(args).toContain('3500k');
     expect(args).toContain('-f');
     expect(args).toContain('hls');
+    expect(args).toContain('-hls_playlist_type');
+    expect(args).toContain('vod');
+    expect(args).toContain('-hls_init_time');
+    expect(args).toContain('1');
+    expect(args).toContain('-force_key_frames');
+    expect(args).toContain('expr:gte(t,n_forced*4)');
   });
 
   it('should place hardware args before the input and use h264 encoders', () => {
-    const args = hlsStream['buildFFmpegArgs']('/input/video.mkv', tmpDir, DEFAULT_HLS_PROFILES[0], 'vaapi');
+    const profile1080 = DEFAULT_HLS_PROFILES.find((profile) => profile.id === '1080p');
+    if (!profile1080) {
+      throw new Error('1080p profile missing');
+    }
+    const args = hlsStream['buildFFmpegArgs']('/input/video.mkv', tmpDir, profile1080, 'vaapi');
     const hwIndex = args.indexOf('-hwaccel');
     const inputIndex = args.indexOf('-i');
 

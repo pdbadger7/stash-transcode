@@ -7,7 +7,7 @@ describe('StashClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses a minimal scene query compatible across stash schemas', async () => {
+  it('uses a scene query that includes duration and source metadata when available', async () => {
     const postSpy = vi.spyOn(axios, 'post').mockResolvedValue({
       data: {
         data: {
@@ -28,11 +28,47 @@ describe('StashClient', () => {
     expect(query).toContain('findScene(id: $id)');
     expect(query).toContain('files');
     expect(query).toContain('path');
+    expect(query).toContain('duration');
+    expect(query).toContain('width');
+    expect(query).toContain('height');
+    expect(query).toContain('fps');
     expect(query).not.toContain('videoCodec');
     expect(query).not.toContain('audioCodec');
-    expect(query).not.toContain('width');
-    expect(query).not.toContain('height');
-    expect(query).not.toContain('duration');
+  });
+
+  it('falls back to progressively smaller scene queries when metadata fields are unsupported', async () => {
+    const postSpy = vi
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          errors: [{ message: 'Cannot query field "fps" on type "Scene"' }],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            findScene: {
+              id: '5691',
+              duration: 123,
+              width: 1280,
+              height: 720,
+              files: [{ id: 'f1', path: '/data/video.mp4' }],
+            },
+          },
+        },
+      });
+
+    const client = new StashClient('https://stash.example/graphql', 'api-key');
+    const scene = await client.getScene('5691');
+
+    expect(scene?.id).toBe('5691');
+    expect(postSpy).toHaveBeenCalledTimes(2);
+    const firstQuery = (postSpy.mock.calls[0]?.[1] as { query: string }).query;
+    const secondQuery = (postSpy.mock.calls[1]?.[1] as { query: string }).query;
+    expect(firstQuery).toContain('fps');
+    expect(secondQuery).not.toContain('fps');
+    expect(secondQuery).toContain('width');
+    expect(secondQuery).toContain('height');
   });
 
   it('returns null when GraphQL responds with errors and no scene', async () => {

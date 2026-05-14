@@ -30,7 +30,14 @@ export interface ProbeResponse {
   error?: string;
 }
 
-export type PlaybackQualityId = 'auto' | '1080p' | '720p' | '480p';
+export type PlaybackQualityId =
+  | 'auto'
+  | '4320p'
+  | '2160p'
+  | '1440p'
+  | '1080p'
+  | '720p'
+  | '480p';
 
 export interface PlaybackQuality {
   id: PlaybackQualityId;
@@ -39,6 +46,9 @@ export interface PlaybackQuality {
 
 export const PLAYBACK_QUALITIES: PlaybackQuality[] = [
   { id: 'auto', label: 'Auto' },
+  { id: '4320p', label: '4320p' },
+  { id: '2160p', label: '2160p' },
+  { id: '1440p', label: '1440p' },
   { id: '1080p', label: '1080p' },
   { id: '720p', label: '720p' },
   { id: '480p', label: '480p' },

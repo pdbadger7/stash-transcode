@@ -2,6 +2,10 @@ export interface StashScene {
   id: string;
   title: string;
   files: StashFile[];
+  duration?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
 }
 
 export interface StashFile {
@@ -14,6 +18,10 @@ export interface ProbeResponse {
   scene_id?: string;
   mode?: string[];
   path_mapped?: boolean;
+  duration_seconds?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
   error?: string;
 }
 
@@ -32,6 +40,10 @@ export interface Config {
   hlsCacheDir: string;
   ffmpegPath: string;
   hwaccel: 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
+  hlsSegmentDuration: number;
+  hlsStartupSegmentDuration: number;
+  hlsVariantWaitMs: number;
+  hlsVariantPollMs: number;
   port: number;
   agentSharedToken?: string;
   corsAllowedOrigins: true | string[];

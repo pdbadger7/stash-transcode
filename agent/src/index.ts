@@ -8,6 +8,7 @@ import { AuthValidator } from './auth.js';
 import {
   DEFAULT_HLS_PROFILES,
   HLSStream,
+  type SourceVideoMetadata,
   VariantPlaylistNotReadyError,
 } from './hlsStream.js';
 import {
@@ -30,11 +31,20 @@ const hlsStream = new HLSStream({
   cacheDir: config.hlsCacheDir,
   ffmpegPath: config.ffmpegPath,
   hwaccel: config.hwaccel,
-  segmentDuration: 4,
+  segmentDuration: config.hlsSegmentDuration,
+  startupSegmentDuration: config.hlsStartupSegmentDuration,
+  variantPlaylistWaitMs: config.hlsVariantWaitMs,
+  variantPlaylistPollMs: config.hlsVariantPollMs,
   enableDebug: process.env.DEBUG === 'true',
 });
 
-async function resolveSceneInputPath(sceneId: string): Promise<string | null> {
+type SceneInputContext = {
+  sceneId: string;
+  inputPath: string;
+  sourceMetadata: SourceVideoMetadata;
+};
+
+async function resolveSceneInputContext(sceneId: string): Promise<SceneInputContext | null> {
   const scene = await stashClient.getScene(sceneId);
   if (!scene || !scene.files || scene.files.length === 0) {
     return null;
@@ -52,7 +62,16 @@ async function resolveSceneInputPath(sceneId: string): Promise<string | null> {
     return null;
   }
 
-  return mappingResult.path;
+  return {
+    sceneId: scene.id,
+    inputPath: mappingResult.path,
+    sourceMetadata: {
+      durationSeconds: scene.duration,
+      width: scene.width,
+      height: scene.height,
+      fps: scene.fps,
+    },
+  };
 }
 
 const app = Fastify({
@@ -123,6 +142,10 @@ app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: strin
       scene_id: scene.id,
       mode: ['direct', 'hls'],
       path_mapped: true,
+      duration_seconds: scene.duration,
+      width: scene.width,
+      height: scene.height,
+      fps: scene.fps,
     };
   }
 );
@@ -229,16 +252,17 @@ app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: strin
     }
 
     try {
-      const inputPath = await resolveSceneInputPath(id);
-      if (!inputPath) {
+      const sceneContext = await resolveSceneInputContext(id);
+      if (!sceneContext) {
         return reply.code(404).send({ ok: false, error: 'Scene not found' });
       }
 
       const playlist = await hlsStream.getMasterPlaylist(
         id,
-        inputPath,
+        sceneContext.inputPath,
         request.query.quality,
-        token
+        token,
+        sceneContext.sourceMetadata
       );
 
       reply
@@ -267,16 +291,17 @@ app.get<{
   }
 
   try {
-    const inputPath = await resolveSceneInputPath(id);
-    if (!inputPath) {
+    const sceneContext = await resolveSceneInputContext(id);
+    if (!sceneContext) {
       return reply.code(404).send({ ok: false, error: 'Scene not found' });
     }
 
     const playlist = await hlsStream.getVariantPlaylist(
       id,
       profile,
-      inputPath,
-      token
+      sceneContext.inputPath,
+      token,
+      sceneContext.sourceMetadata
     );
     reply
       .header('Content-Type', hlsStream.getPlaylistMimeType())
@@ -363,7 +388,9 @@ app.get<{
   }
 
   try {
-    const fallbackProfile = DEFAULT_HLS_PROFILES[1]?.id ?? DEFAULT_HLS_PROFILES[0].id;
+    const fallbackProfile =
+      DEFAULT_HLS_PROFILES.find((profile) => profile.id === '720p')?.id ??
+      DEFAULT_HLS_PROFILES[0].id;
     const segment = await hlsStream.getSegment(id, fallbackProfile, segmentName);
 
     if (!segment) {

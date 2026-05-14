@@ -8,11 +8,19 @@ type RequestedHwAccel = 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
 type HardwareAccelMode = Exclude<RequestedHwAccel, 'none' | 'auto'>;
 type ResolvedHwAccelMode = 'none' | HardwareAccelMode;
 
+export interface SourceVideoMetadata {
+  durationSeconds?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
+}
+
 export interface HLSConfig {
   cacheDir: string;
   ffmpegPath: string;
   hwaccel: RequestedHwAccel;
   segmentDuration: number;
+  startupSegmentDuration?: number;
   enableDebug?: boolean;
   profiles?: HLSProfile[];
   hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
@@ -29,6 +37,30 @@ interface TranscodingProcess {
 }
 
 export const DEFAULT_HLS_PROFILES: HLSProfile[] = [
+  {
+    id: '4320p',
+    label: '4320p',
+    width: 7680,
+    height: 4320,
+    videoBitrateKbps: 35000,
+    bandwidthKbps: 42000,
+  },
+  {
+    id: '2160p',
+    label: '2160p',
+    width: 3840,
+    height: 2160,
+    videoBitrateKbps: 16000,
+    bandwidthKbps: 19200,
+  },
+  {
+    id: '1440p',
+    label: '1440p',
+    width: 2560,
+    height: 1440,
+    videoBitrateKbps: 9000,
+    bandwidthKbps: 10800,
+  },
   {
     id: '1080p',
     label: '1080p',
@@ -70,6 +102,7 @@ export class HLSStream {
   private ffmpegPath: string;
   private requestedHwaccel: RequestedHwAccel;
   private segmentDuration: number;
+  private startupSegmentDuration: number;
   private enableDebug: boolean;
   private profiles: HLSProfile[];
   private hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
@@ -84,6 +117,10 @@ export class HLSStream {
     this.ffmpegPath = config.ffmpegPath;
     this.requestedHwaccel = config.hwaccel;
     this.segmentDuration = config.segmentDuration || 4;
+    this.startupSegmentDuration = Math.max(
+      1,
+      Math.min(config.startupSegmentDuration ?? 1, this.segmentDuration)
+    );
     this.enableDebug = config.enableDebug || false;
     this.profiles = config.profiles ?? DEFAULT_HLS_PROFILES;
     this.hardwareAccelProbe = config.hardwareAccelProbe;
@@ -95,17 +132,19 @@ export class HLSStream {
     sceneId: string,
     inputPath: string,
     preferredQuality?: string,
-    token?: string
+    token?: string,
+    sourceMetadata?: SourceVideoMetadata
   ): Promise<string> {
-    const profiles = this.orderProfiles(preferredQuality);
-    return this.generateMasterPlaylist(sceneId, profiles, token);
+    const profiles = this.orderProfiles(preferredQuality, sourceMetadata);
+    return this.generateMasterPlaylist(sceneId, profiles, token, sourceMetadata);
   }
 
   async getVariantPlaylist(
     sceneId: string,
     profileId: string,
     inputPath: string,
-    token?: string
+    token?: string,
+    sourceMetadata?: SourceVideoMetadata
   ): Promise<string> {
     const profile = this.resolveProfile(profileId);
     const sceneDir = this.getSceneProfileDir(sceneId, profile.id);
@@ -133,6 +172,16 @@ export class HLSStream {
           }
         }
       );
+    }
+
+    const syntheticPlaylist = this.generateSyntheticVariantPlaylist(
+      sceneId,
+      profile.id,
+      sourceMetadata?.durationSeconds,
+      token
+    );
+    if (syntheticPlaylist) {
+      return syntheticPlaylist;
     }
 
     const waitedPlaylist = await this.waitForReadyVariantPlaylist(
@@ -265,12 +314,20 @@ export class HLSStream {
     }
 
     args.push(...this.getPresetArgs(mode));
+    args.push(
+      '-force_key_frames',
+      `expr:gte(t,n_forced*${this.segmentDuration})`,
+      '-sc_threshold',
+      '0'
+    );
     args.push('-b:v', `${profile.videoBitrateKbps}k`);
     args.push('-maxrate', `${Math.round(profile.videoBitrateKbps * 1.2)}k`);
     args.push('-bufsize', `${Math.max(profile.videoBitrateKbps * 2, 1000)}k`);
     args.push('-c:a', 'aac');
     args.push('-b:a', '128k');
     args.push('-f', 'hls');
+    args.push('-hls_playlist_type', 'vod');
+    args.push('-hls_init_time', String(this.startupSegmentDuration));
     args.push('-hls_time', String(this.segmentDuration));
     args.push('-hls_list_size', '0');
     args.push('-hls_flags', 'independent_segments');
@@ -382,7 +439,8 @@ export class HLSStream {
   private generateMasterPlaylist(
     sceneId: string,
     profiles: HLSProfile[],
-    token?: string
+    token?: string,
+    sourceMetadata?: SourceVideoMetadata
   ): string {
     const lines = [
       '#EXTM3U',
@@ -391,8 +449,18 @@ export class HLSStream {
     ];
 
     for (const profile of profiles) {
+      const rendition = this.resolveRenditionMetadata(profile, sourceMetadata);
+      const streamInf = [
+        `BANDWIDTH=${profile.bandwidthKbps * 1000}`,
+        `RESOLUTION=${rendition.width}x${rendition.height}`,
+        `NAME="${profile.label}"`,
+        'CODECS="avc1.640028,mp4a.40.2"',
+      ];
+      if (typeof rendition.fps === 'number') {
+        streamInf.push(`FRAME-RATE=${this.formatFrameRate(rendition.fps)}`);
+      }
       lines.push(
-        `#EXT-X-STREAM-INF:BANDWIDTH=${profile.bandwidthKbps * 1000},RESOLUTION=${profile.width}x${profile.height},NAME="${profile.label}",CODECS="avc1.640028,mp4a.40.2"`
+        `#EXT-X-STREAM-INF:${streamInf.join(',')}`
       );
       lines.push(
         this.withToken(
@@ -403,6 +471,77 @@ export class HLSStream {
     }
 
     return `${lines.join('\n')}\n`;
+  }
+
+  private resolveRenditionMetadata(
+    profile: HLSProfile,
+    sourceMetadata?: SourceVideoMetadata
+  ): { width: number; height: number; fps?: number } {
+    let width = profile.width;
+    let height = profile.height;
+
+    const sourceWidth = this.normalizePositiveInteger(sourceMetadata?.width);
+    const sourceHeight = this.normalizePositiveInteger(sourceMetadata?.height);
+    const sourceFps = this.normalizePositiveNumber(sourceMetadata?.fps);
+
+    if (sourceWidth && sourceHeight) {
+      height = Math.min(profile.height, sourceHeight);
+      const sourceAspectRatio = sourceWidth / sourceHeight;
+      width = Math.floor((height * sourceAspectRatio) / 2) * 2;
+      width = Math.max(2, width);
+      width = Math.min(width, profile.width, sourceWidth);
+    }
+
+    return {
+      width,
+      height,
+      fps: sourceFps ? Math.min(sourceFps, 120) : undefined,
+    };
+  }
+
+  private formatFrameRate(fps: number): string {
+    return (Math.round(fps * 1000) / 1000).toFixed(3);
+  }
+
+  private generateSyntheticVariantPlaylist(
+    sceneId: string,
+    profileId: string,
+    durationSeconds?: number,
+    token?: string
+  ): string | null {
+    const duration = this.normalizePositiveNumber(durationSeconds);
+    if (!duration) {
+      return null;
+    }
+
+    const segmentCount = Math.max(1, Math.ceil(duration / this.segmentDuration));
+    const lines = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3',
+      `#EXT-X-TARGETDURATION:${this.segmentDuration}`,
+      '#EXT-X-MEDIA-SEQUENCE:0',
+      '#EXT-X-PLAYLIST-TYPE:VOD',
+      '#EXT-X-INDEPENDENT-SEGMENTS',
+    ];
+
+    let remaining = duration;
+    for (let index = 0; index < segmentCount; index += 1) {
+      const segmentDuration =
+        index === segmentCount - 1
+          ? Math.max(0.001, remaining)
+          : this.segmentDuration;
+      lines.push(`#EXTINF:${segmentDuration.toFixed(3)},`);
+      lines.push(
+        this.withToken(
+          `/stash/scene/${sceneId}/variant/${profileId}/segment_${String(index).padStart(3, '0')}.ts`,
+          token
+        )
+      );
+      remaining = Math.max(0, remaining - this.segmentDuration);
+    }
+
+    lines.push('#EXT-X-ENDLIST', '');
+    return lines.join('\n');
   }
 
   private rewritePlaylistUris(
@@ -497,6 +636,22 @@ export class HLSStream {
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  private normalizePositiveInteger(value?: number): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+
+    return Math.floor(value);
+  }
+
+  private normalizePositiveNumber(value?: number): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      return null;
+    }
+
+    return value;
+  }
+
   private getSceneProfileDir(sceneId: string, profileId: string): string {
     return path.join(this.cacheDir, sceneId, profileId);
   }
@@ -514,8 +669,34 @@ export class HLSStream {
     return profile;
   }
 
-  private orderProfiles(preferredQuality?: string): HLSProfile[] {
-    const ordered = [...this.profiles].sort(
+  private getProfilesForSource(sourceMetadata?: SourceVideoMetadata): HLSProfile[] {
+    const sourceWidth = this.normalizePositiveInteger(sourceMetadata?.width);
+    const sourceHeight = this.normalizePositiveInteger(sourceMetadata?.height);
+
+    if (!sourceWidth && !sourceHeight) {
+      return this.profiles;
+    }
+
+    const filtered = this.profiles.filter((profile) => {
+      if (sourceWidth && profile.width > sourceWidth) {
+        return false;
+      }
+
+      if (sourceHeight && profile.height > sourceHeight) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return filtered.length > 0 ? filtered : [this.profiles[this.profiles.length - 1]];
+  }
+
+  private orderProfiles(
+    preferredQuality?: string,
+    sourceMetadata?: SourceVideoMetadata
+  ): HLSProfile[] {
+    const ordered = [...this.getProfilesForSource(sourceMetadata)].sort(
       (a, b) => b.bandwidthKbps - a.bandwidthKbps
     );
 

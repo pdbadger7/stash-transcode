@@ -2,7 +2,51 @@ import axios, { AxiosError } from 'axios';
 import https from 'https';
 import type { StashScene } from './types.js';
 
-const STASH_SCENE_QUERY = `
+const STASH_SCENE_QUERY_WITH_SOURCE_METADATA = `
+  query FindScene($id: ID!) {
+    findScene(id: $id) {
+      id
+      duration
+      width
+      height
+      fps
+      files {
+        id
+        path
+      }
+    }
+  }
+`;
+
+const STASH_SCENE_QUERY_WITH_DIMENSIONS = `
+  query FindScene($id: ID!) {
+    findScene(id: $id) {
+      id
+      duration
+      width
+      height
+      files {
+        id
+        path
+      }
+    }
+  }
+`;
+
+const STASH_SCENE_QUERY_WITH_DURATION = `
+  query FindScene($id: ID!) {
+    findScene(id: $id) {
+      id
+      duration
+      files {
+        id
+        path
+      }
+    }
+  }
+`;
+
+const STASH_SCENE_QUERY_MINIMAL = `
   query FindScene($id: ID!) {
     findScene(id: $id) {
       id
@@ -55,31 +99,35 @@ export class StashClient {
     try {
       const idCandidates = buildSceneIdCandidates(id);
       for (const candidateId of idCandidates) {
-        const response = await axios.post<FindSceneResponse>(
-          this.baseUrl,
-          {
-            query: STASH_SCENE_QUERY,
-            variables: { id: candidateId },
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'ApiKey': this.apiKey,
-            },
-            httpsAgent: this.httpsAgent,
-          }
-        );
+        const queryFallbacks = [
+          STASH_SCENE_QUERY_WITH_SOURCE_METADATA,
+          STASH_SCENE_QUERY_WITH_DIMENSIONS,
+          STASH_SCENE_QUERY_WITH_DURATION,
+          STASH_SCENE_QUERY_MINIMAL,
+        ];
 
-        if (response.data?.errors?.length) {
-          console.error(
-            `GraphQL errors while fetching scene ${id} (candidate ${candidateId}):`,
-            response.data.errors.map((error) => error.message).filter(Boolean)
+        for (let queryIndex = 0; queryIndex < queryFallbacks.length; queryIndex += 1) {
+          const query = queryFallbacks[queryIndex];
+          const response = await this.fetchScene(candidateId, query);
+          const unsupportedFieldError = response.data?.errors?.some((error) =>
+            (error.message ?? '').startsWith('Cannot query field')
           );
-        }
 
-        const scene = response.data?.data?.findScene;
-        if (scene) {
-          return scene;
+          if (response.data?.errors?.length && (!unsupportedFieldError || queryIndex === queryFallbacks.length - 1)) {
+            console.error(
+              `GraphQL errors while fetching scene ${id} (candidate ${candidateId}):`,
+              response.data.errors.map((error) => error.message).filter(Boolean)
+            );
+          }
+
+          const scene = response.data?.data?.findScene;
+          if (scene) {
+            return scene;
+          }
+
+          if (!unsupportedFieldError) {
+            break;
+          }
         }
       }
 
@@ -95,5 +143,22 @@ export class StashClient {
       }
       return null;
     }
+  }
+
+  private fetchScene(candidateId: string, query: string) {
+    return axios.post<FindSceneResponse>(
+      this.baseUrl,
+      {
+        query,
+        variables: { id: candidateId },
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'ApiKey': this.apiKey,
+        },
+        httpsAgent: this.httpsAgent,
+      }
+    );
   }
 }
