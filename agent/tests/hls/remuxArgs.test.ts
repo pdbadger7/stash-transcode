@@ -43,6 +43,18 @@ describe('buildRemuxHlsArgs', () => {
     expect(args[args.indexOf('-muxpreload') + 1]).toBe('0');
   });
 
+  it('writes remux segments via temp files to avoid partial fragment reads', () => {
+    const args = buildRemuxHlsArgs({
+      inputPath: '/m/video.mp4',
+      outputDir: '/tmp/remux/sc1',
+      segmentDuration: 4,
+      videoCodec: 'h264',
+    });
+
+    expect(args).toContain('-hls_flags');
+    expect(args[args.indexOf('-hls_flags') + 1]).toBe('independent_segments+temp_file');
+  });
+
   it('tags HEVC remux output as hvc1 for client compatibility', () => {
     const args = buildRemuxHlsArgs({
       inputPath: '/m/video.mp4',

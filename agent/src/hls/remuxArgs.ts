@@ -54,7 +54,7 @@ export function buildRemuxHlsArgs(input: RemuxHlsArgsInput): string[] {
     '-hls_playlist_type',
     'event',
     '-hls_flags',
-    'independent_segments',
+    'independent_segments+temp_file',
     '-hls_fmp4_init_filename',
     'init.mp4',
     '-hls_segment_filename',
