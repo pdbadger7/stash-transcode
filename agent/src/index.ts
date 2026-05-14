@@ -28,6 +28,9 @@ const hlsStream = new HLSStream({
   ffmpegPath: config.ffmpegPath,
   hwaccel: config.hwaccel,
   segmentDuration: config.hlsSegmentDuration,
+  lookaheadSegments: config.hlsLookaheadSegments,
+  maxSessions: config.hlsMaxSessions,
+  singleSegmentTimeoutMs: config.hlsSegmentTimeoutMs,
   enableDebug: process.env.DEBUG === 'true',
 });
 

@@ -41,9 +41,9 @@ export interface Config {
   ffmpegPath: string;
   hwaccel: 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
   hlsSegmentDuration: number;
-  hlsStartupSegmentDuration: number;
-  hlsVariantWaitMs: number;
-  hlsVariantPollMs: number;
+  hlsLookaheadSegments: number;
+  hlsMaxSessions: number;
+  hlsSegmentTimeoutMs: number;
   port: number;
   agentSharedToken?: string;
   corsAllowedOrigins: true | string[];

@@ -23,9 +23,9 @@ const configSchema = z.object({
   ffmpegPath: z.string().default('/usr/bin/ffmpeg'),
   hwaccel: z.enum(['none', 'auto', 'vaapi', 'qsv', 'nvenc']).default('auto'),
   hlsSegmentDuration: z.coerce.number().int().positive().default(4),
-  hlsStartupSegmentDuration: z.coerce.number().int().positive().default(1),
-  hlsVariantWaitMs: z.coerce.number().int().nonnegative().default(30000),
-  hlsVariantPollMs: z.coerce.number().int().positive().default(250),
+  hlsLookaheadSegments: z.coerce.number().int().positive().default(15),
+  hlsMaxSessions: z.coerce.number().int().positive().default(4),
+  hlsSegmentTimeoutMs: z.coerce.number().int().positive().default(45000),
   port: z.coerce.number().default(8080),
   agentSharedToken: z.string().optional(),
   corsAllowedOrigins: z
@@ -66,17 +66,13 @@ export function loadConfig(): Config {
     ffmpegPath: env.FFMPEG_PATH,
     hwaccel: env.HWACCEL || 'auto',
     hlsSegmentDuration: env.HLS_SEGMENT_DURATION,
-    hlsStartupSegmentDuration: env.HLS_STARTUP_SEGMENT_DURATION,
-    hlsVariantWaitMs: env.HLS_VARIANT_WAIT_MS,
-    hlsVariantPollMs: env.HLS_VARIANT_POLL_MS,
+    hlsLookaheadSegments: env.HLS_LOOKAHEAD_SEGMENTS,
+    hlsMaxSessions: env.HLS_MAX_SESSIONS,
+    hlsSegmentTimeoutMs: env.HLS_SEGMENT_TIMEOUT_MS,
     port: env.PORT || '8080',
     agentSharedToken: env.AGENT_SHARED_TOKEN,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS,
   });
-
-  if (config.hlsStartupSegmentDuration > config.hlsSegmentDuration) {
-    throw new Error('HLS_STARTUP_SEGMENT_DURATION must be <= HLS_SEGMENT_DURATION');
-  }
 
   return config as Config;
 }
