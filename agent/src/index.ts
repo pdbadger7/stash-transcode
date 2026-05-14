@@ -5,12 +5,8 @@ import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
-import {
-  DEFAULT_HLS_PROFILES,
-  HLSStream,
-  type SourceVideoMetadata,
-  VariantPlaylistNotReadyError,
-} from './hlsStream.js';
+import { HLSStream, type SourceVideoMetadata } from './hlsStream.js';
+import { DEFAULT_HLS_PROFILES } from './hls/profiles.js';
 import {
   parseRangeHeader,
   getFileSize,
@@ -32,9 +28,6 @@ const hlsStream = new HLSStream({
   ffmpegPath: config.ffmpegPath,
   hwaccel: config.hwaccel,
   segmentDuration: config.hlsSegmentDuration,
-  startupSegmentDuration: config.hlsStartupSegmentDuration,
-  variantPlaylistWaitMs: config.hlsVariantWaitMs,
-  variantPlaylistPollMs: config.hlsVariantPollMs,
   enableDebug: process.env.DEBUG === 'true',
 });
 
@@ -308,16 +301,8 @@ app.get<{
       .header('Cache-Control', 'no-cache')
       .send(playlist);
   } catch (err) {
-    if (err instanceof VariantPlaylistNotReadyError) {
-      return reply
-        .code(503)
-        .header('Retry-After', String(err.retryAfterSeconds))
-        .header('Content-Type', 'text/plain; charset=utf-8')
-        .send(err.message);
-    }
-
     console.error(`Failed to generate variant playlist for scene ${id}:`, err);
-    return reply.code(404).send({
+    return reply.code(500).send({
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to generate variant',
     });
@@ -345,25 +330,39 @@ app.get<{
       });
     }
 
-    try {
-      const segment = await hlsStream.getSegment(id, profile, segmentName);
+    const sceneContext = await resolveSceneInputContext(id);
+    if (!sceneContext) {
+      return reply.code(404).send({ ok: false, error: 'Scene not found' });
+    }
 
+    const ac = new AbortController();
+    request.raw.on('close', () => {
+      if (!request.raw.complete) ac.abort();
+    });
+
+    try {
+      const segment = await hlsStream.getSegment({
+        sceneId: id,
+        profileId: profile,
+        segmentName,
+        inputPath: sceneContext.inputPath,
+        sourceMetadata: sceneContext.sourceMetadata,
+        abortSignal: ac.signal,
+      });
       if (!segment) {
         return reply.code(404).send({ ok: false, error: 'Segment not found' });
       }
-
       reply
         .header('Content-Type', hlsStream.getSegmentMimeType(segmentName))
         .header('Cache-Control', 'public, max-age=3600')
+        .header('Content-Length', String(segment.length))
         .send(segment);
     } catch (err) {
-      console.error(
-        `Failed to serve segment ${segmentName} for scene ${id}/${profile}:`,
-        err
-      );
+      if (ac.signal.aborted) return;
+      console.error(`Segment ${segmentName} for ${id}/${profile} failed:`, err);
       return reply.code(500).send({
         ok: false,
-        error: 'Failed to serve segment',
+        error: err instanceof Error ? err.message : 'Segment production failed',
       });
     }
   }
@@ -387,11 +386,28 @@ app.get<{
     });
   }
 
+  const sceneContext = await resolveSceneInputContext(id);
+  if (!sceneContext) {
+    return reply.code(404).send({ ok: false, error: 'Scene not found' });
+  }
+
+  const ac = new AbortController();
+  request.raw.on('close', () => {
+    if (!request.raw.complete) ac.abort();
+  });
+
   try {
     const fallbackProfile =
       DEFAULT_HLS_PROFILES.find((profile) => profile.id === '720p')?.id ??
       DEFAULT_HLS_PROFILES[0].id;
-    const segment = await hlsStream.getSegment(id, fallbackProfile, segmentName);
+    const segment = await hlsStream.getSegment({
+      sceneId: id,
+      profileId: fallbackProfile,
+      segmentName,
+      inputPath: sceneContext.inputPath,
+      sourceMetadata: sceneContext.sourceMetadata,
+      abortSignal: ac.signal,
+    });
 
     if (!segment) {
       return reply.code(404).send({ ok: false, error: 'Segment not found' });
@@ -402,6 +418,7 @@ app.get<{
       .header('Cache-Control', 'public, max-age=3600')
       .send(segment);
   } catch (err) {
+    if (ac.signal.aborted) return;
     console.error(`Failed to serve segment ${segmentName} for scene ${id}:`, err);
     return reply.code(500).send({
       ok: false,
@@ -414,6 +431,10 @@ app.get<{
 setInterval(() => {
   hlsStream.cleanupOldTranscodes();
 }, 30 * 60 * 1000);
+
+app.addHook('onClose', async () => {
+  hlsStream.shutdown();
+});
 
 // Start server
 await app.listen({ port: config.port, host: '0.0.0.0' });
