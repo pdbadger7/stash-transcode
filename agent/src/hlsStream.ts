@@ -11,8 +11,8 @@ import {
   buildSessionArgs,
   buildSingleSegmentArgs,
   defaultHwAccelEnv,
-  selectHwAccelMode,
-  type HardwareAccelMode,
+  selectHwAccel,
+  type HwAccelSelection,
   type RequestedHwAccel,
   type ResolvedHwAccelMode,
 } from './hls/ffmpegArgs.js';
@@ -40,6 +40,8 @@ export interface HLSConfig {
   lookaheadSegments?: number;
   maxSessions?: number;
   singleSegmentTimeoutMs?: number;
+  hwaccelDevice?: string;
+  hwaccelDeviceExists?: (path: string) => boolean;
   sessionWaitMs?: number;
   produceSegment?: (input: ProduceSegmentInput) => Promise<Buffer>;
   sessionSpawn?: SpawnFn;
@@ -61,7 +63,6 @@ export class HLSStream {
   private readonly cache: SegmentCache;
   private readonly sessions: SessionManager;
   private readonly produceSegmentFn: (input: ProduceSegmentInput) => Promise<Buffer>;
-  private readonly unavailableHwaccel = new Set<HardwareAccelMode>();
   private readonly enableDebug: boolean;
   private readonly cfg: {
     segmentDuration: number;
@@ -71,6 +72,8 @@ export class HLSStream {
     sessionWaitMs: number;
     ffmpegPath: string;
     hwaccel: RequestedHwAccel;
+    hwaccelDevice?: string;
+    hwaccelDeviceExists?: (path: string) => boolean;
     cacheDir: string;
   };
 
@@ -87,6 +90,8 @@ export class HLSStream {
       sessionWaitMs: config.sessionWaitMs ?? 1_500,
       ffmpegPath: config.ffmpegPath,
       hwaccel: config.hwaccel,
+      hwaccelDevice: config.hwaccelDevice,
+      hwaccelDeviceExists: config.hwaccelDeviceExists,
       cacheDir: config.cacheDir,
     };
     this.sessions = new SessionManager({
@@ -98,6 +103,7 @@ export class HLSStream {
       buildArgs: buildSessionArgs,
       outputDirFor: (sceneId, profileId) => this.cache.profileDir(sceneId, profileId),
       enableDebug: this.enableDebug,
+      hwaccelDevice: config.hwaccelDevice,
     });
   }
 
@@ -167,7 +173,13 @@ export class HLSStream {
     );
     if (sessionHit) return sessionHit;
 
-    const mode = this.selectMode();
+    const selection = this.selectHwAccel();
+    const mode = selection.mode;
+    if (this.enableDebug) {
+      console.debug(
+        `[HLS] selected hw mode=${mode}${selection.hwaccelDevice ? ` device=${selection.hwaccelDevice}` : ''} scene=${input.sceneId} profile=${input.profileId} segment=${index}`
+      );
+    }
     const coldDuration = Math.min(segDuration, 2);
     const args = buildSingleSegmentArgs({
       inputPath: input.inputPath,
@@ -176,6 +188,7 @@ export class HLSStream {
       durationSeconds: coldDuration,
       mode,
       segmentDuration: this.cfg.segmentDuration,
+      hwaccelDevice: selection.hwaccelDevice,
       sourceVideoCodec: input.sourceMetadata.videoCodec,
     });
 
@@ -183,35 +196,41 @@ export class HLSStream {
     const timer = setTimeout(() => timeoutCtrl.abort(), this.cfg.singleSegmentTimeoutMs);
     const composite = anyAbort([timeoutCtrl.signal, input.abortSignal]);
     let bytes: Buffer;
+    let sessionMode: ResolvedHwAccelMode = mode;
     try {
-      bytes = await this.produceSegmentFn({
-        ffmpegPath: this.cfg.ffmpegPath,
-        args,
-        signal: composite,
-      });
-    } catch (err) {
-      if (mode !== 'none' && !timeoutCtrl.signal.aborted) {
-        this.unavailableHwaccel.add(mode as HardwareAccelMode);
-        if (this.enableDebug) console.warn(`[HLS] hw mode ${mode} failed, marked unavailable`);
+      try {
         bytes = await this.produceSegmentFn({
           ffmpegPath: this.cfg.ffmpegPath,
-          args: buildSingleSegmentArgs({
-            inputPath: input.inputPath,
-            profile,
-            startSeconds,
-            durationSeconds: coldDuration,
-            mode: 'none',
-            segmentDuration: this.cfg.segmentDuration,
-            sourceVideoCodec: input.sourceMetadata.videoCodec,
-          }),
+          args,
           signal: composite,
         });
-      } else {
-        clearTimeout(timer);
-        throw err;
+      } catch (err) {
+        if (mode !== 'none' && !timeoutCtrl.signal.aborted) {
+          console.warn(
+            `[HLS] hw mode ${mode} failed for scene=${input.sceneId} profile=${input.profileId} segment=${index}; falling back to software: ${formatErrorReason(err)}`
+          );
+          sessionMode = 'none';
+          bytes = await this.produceSegmentFn({
+            ffmpegPath: this.cfg.ffmpegPath,
+            args: buildSingleSegmentArgs({
+              inputPath: input.inputPath,
+              profile,
+              startSeconds,
+              durationSeconds: coldDuration,
+              mode: 'none',
+              segmentDuration: this.cfg.segmentDuration,
+              hwaccelDevice: selection.hwaccelDevice,
+              sourceVideoCodec: input.sourceMetadata.videoCodec,
+            }),
+            signal: composite,
+          });
+        } else {
+          throw err;
+        }
       }
+    } finally {
+      clearTimeout(timer);
     }
-    clearTimeout(timer);
 
     await this.cache.write(input.sceneId, input.profileId, index, bytes);
 
@@ -222,7 +241,8 @@ export class HLSStream {
         index,
         inputPath: input.inputPath,
         profile,
-        mode,
+        mode: sessionMode,
+        hwaccelDevice: selection.hwaccelDevice,
       });
     }
 
@@ -282,9 +302,16 @@ export class HLSStream {
     return found;
   }
 
-  private selectMode(): ResolvedHwAccelMode {
-    return selectHwAccelMode(this.cfg.hwaccel, defaultHwAccelEnv(this.unavailableHwaccel));
+  private selectHwAccel(): HwAccelSelection {
+    const env = defaultHwAccelEnv(this.cfg.hwaccelDevice);
+    if (this.cfg.hwaccelDeviceExists) env.deviceExists = this.cfg.hwaccelDeviceExists;
+    return selectHwAccel(this.cfg.hwaccel, env);
   }
+}
+
+function formatErrorReason(err: unknown): string {
+  if (err instanceof Error) return err.message.split('\n')[0] || err.name;
+  return String(err);
 }
 
 function sleep(ms: number): Promise<void> {

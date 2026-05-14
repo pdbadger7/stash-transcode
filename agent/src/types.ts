@@ -41,6 +41,7 @@ export interface Config {
   hlsCacheDir: string;
   ffmpegPath: string;
   hwaccel: 'none' | 'auto' | 'vaapi' | 'qsv' | 'nvenc';
+  hwaccelDevice?: string;
   hlsSegmentDuration: number;
   hlsLookaheadSegments: number;
   hlsMaxSessions: number;

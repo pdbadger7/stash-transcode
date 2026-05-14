@@ -30,6 +30,7 @@ beforeEach(async () => {
 afterEach(async () => {
   hls.shutdown();
   await fs.rm(cacheDir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe('HLSStream.getMasterPlaylist', () => {
@@ -114,5 +115,63 @@ describe('HLSStream.getSegment', () => {
         sourceMetadata: { durationSeconds: 10 },
       })
     ).rejects.toThrow();
+  });
+
+  it('falls back after one VAAPI failure without disabling future VAAPI attempts', async () => {
+    hls.shutdown();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const produceSegment = vi
+      .fn()
+      .mockImplementationOnce(async ({ args }) => {
+        expect(args).toContain('h264_vaapi');
+        throw new Error('vaapi filtergraph failed');
+      })
+      .mockImplementationOnce(async ({ args }) => {
+        expect(args).toContain('libx264');
+        return Buffer.from('SOFTWARE_FALLBACK');
+      })
+      .mockImplementationOnce(async ({ args }) => {
+        expect(args).toContain('h264_vaapi');
+        return Buffer.from('VAAPI_AGAIN');
+      });
+
+    hls = new HLSStream({
+      cacheDir,
+      ffmpegPath: 'ffmpeg',
+      hwaccel: 'vaapi',
+      hwaccelDevice: '/dev/dri/renderD129',
+      hwaccelDeviceExists: (p) => p === '/dev/dri/renderD129',
+      segmentDuration: 4,
+      sessionWaitMs: 1,
+      produceSegment,
+      sessionSpawn: () => {
+        const p: any = new EventEmitter();
+        p.kill = vi.fn();
+        p.stdout = new EventEmitter();
+        p.stderr = new EventEmitter();
+        setImmediate(() => p.emit('exit', 0));
+        return p;
+      },
+    });
+
+    const first = await hls.getSegment({
+      sceneId: 'sc-vaapi-a',
+      profileId: '720p',
+      segmentName: 'segment_000.ts',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 12 },
+    });
+    const second = await hls.getSegment({
+      sceneId: 'sc-vaapi-b',
+      profileId: '720p',
+      segmentName: 'segment_000.ts',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 12 },
+    });
+
+    expect(first?.toString()).toBe('SOFTWARE_FALLBACK');
+    expect(second?.toString()).toBe('VAAPI_AGAIN');
+    expect(produceSegment).toHaveBeenCalledTimes(3);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('falling back to software'));
   });
 });

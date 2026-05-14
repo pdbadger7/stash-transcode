@@ -12,6 +12,7 @@ export interface BuildSessionArgsFn {
     mode: ResolvedHwAccelMode;
     segmentDuration: number;
     outputDir: string;
+    hwaccelDevice?: string;
   }): string[];
 }
 
@@ -25,6 +26,7 @@ export interface SessionManagerConfig {
   outputDirFor?: (sceneId: string, profileId: string) => string;
   onSessionExit?: (key: string, code: number | null) => void;
   enableDebug?: boolean;
+  hwaccelDevice?: string;
 }
 
 export interface NoteRequestInput {
@@ -34,6 +36,7 @@ export interface NoteRequestInput {
   inputPath: string;
   profile: HLSProfile;
   mode: ResolvedHwAccelMode;
+  hwaccelDevice?: string;
 }
 
 interface Session {
@@ -80,7 +83,14 @@ export class SessionManager {
       mode: input.mode,
       segmentDuration: this.cfg.segmentDuration,
       outputDir,
+      hwaccelDevice: input.hwaccelDevice ?? this.cfg.hwaccelDevice,
     });
+    if (this.cfg.enableDebug) {
+      const hwaccelDevice = input.hwaccelDevice ?? this.cfg.hwaccelDevice;
+      console.debug(
+        `[HLS] starting lookahead session key=${key} mode=${input.mode}${hwaccelDevice ? ` device=${hwaccelDevice}` : ''}`
+      );
+    }
     const proc = this.spawn(this.cfg.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     const session: Session = {
       key,

@@ -32,9 +32,13 @@ services:
       HLS_CACHE_DIR: /cache/hls
       FFMPEG_PATH: /usr/bin/ffmpeg
       HWACCEL: auto
+      HWACCEL_DEVICE: /dev/dri/renderD128
       PORT: 8080
       AGENT_SHARED_TOKEN: ${AGENT_SHARED_TOKEN:-}
       CORS_ALLOWED_ORIGINS: "*"
+    # Uncomment for VAAPI/QSV hardware acceleration:
+    # devices:
+    #   - /dev/dri:/dev/dri
     restart: unless-stopped
     # Uncomment if using local Stash:
     # depends_on:

@@ -213,6 +213,7 @@ AGENT_BASE_URL=https://video.home           # Used for fallback/docs
 HLS_CACHE_DIR=/cache/hls                    # For HLS segments (Phase 2)
 FFMPEG_PATH=/usr/bin/ffmpeg                 # For HLS transcoding (Phase 2)
 HWACCEL=auto                                # none|auto|vaapi|qsv|nvenc
+HWACCEL_DEVICE=/dev/dri/renderD128          # VAAPI/QSV render device when HWACCEL uses /dev/dri
 HLS_SEGMENT_DURATION=4                      # Main HLS segment duration (seconds)
 HLS_STARTUP_SEGMENT_DURATION=1              # Short startup segment target (seconds)
 HLS_VARIANT_WAIT_MS=30000                   # Wait for first media segments before returning 503

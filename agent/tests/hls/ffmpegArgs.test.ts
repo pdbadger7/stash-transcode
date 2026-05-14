@@ -56,7 +56,7 @@ describe('buildSingleSegmentArgs', () => {
     expect(args[presetIdx + 1]).toBe('ultrafast');
   });
 
-  it('uses h264_vaapi codec when mode is vaapi', () => {
+  it('uses VAAPI device init and hardware-safe filter chain when mode is vaapi', () => {
     const args = buildSingleSegmentArgs({
       inputPath: '/m/video.mp4',
       profile: PROFILE,
@@ -64,8 +64,34 @@ describe('buildSingleSegmentArgs', () => {
       durationSeconds: 4,
       mode: 'vaapi',
       segmentDuration: 4,
+      hwaccelDevice: '/dev/dri/renderD129',
     });
     expect(args).toContain('h264_vaapi');
+    expect(args).toContain('-vaapi_device');
+    expect(args[args.indexOf('-vaapi_device') + 1]).toBe('/dev/dri/renderD129');
+    expect(args).toContain('-hwaccel');
+    expect(args[args.indexOf('-hwaccel') + 1]).toBe('vaapi');
+    expect(args).toContain('-hwaccel_device');
+    expect(args[args.indexOf('-hwaccel_device') + 1]).toBe('/dev/dri/renderD129');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toBe('format=nv12,hwupload,scale_vaapi=-2:720');
+    expect(args).not.toContain('scale=-2:720');
+  });
+
+  it('uploads frames for VAAPI even when no scale is needed', () => {
+    const nativeProfile = { ...PROFILE, height: 0 };
+    const args = buildSingleSegmentArgs({
+      inputPath: '/m/video.mp4',
+      profile: nativeProfile,
+      startSeconds: 0,
+      durationSeconds: 4,
+      mode: 'vaapi',
+      segmentDuration: 4,
+      sourceVideoCodec: 'hevc',
+    });
+    expect(args).toContain('h264_vaapi');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toBe('format=nv12,hwupload');
   });
 
   it('uses stream copy and skips scale/preset/bitrate when source is h264 with no-scale profile', () => {
@@ -138,16 +164,41 @@ describe('buildSessionArgs', () => {
     );
     expect(args).not.toContain('-hls_init_time');
   });
+
+  it('uses VAAPI device init and scale_vaapi for lookahead sessions', () => {
+    const args = buildSessionArgs({
+      inputPath: '/m/v.mp4',
+      profile: PROFILE,
+      head: 0,
+      mode: 'vaapi',
+      segmentDuration: 4,
+      outputDir: '/tmp/cache/sc1/720p',
+      hwaccelDevice: '/dev/dri/renderD130',
+    });
+    expect(args).toContain('-vaapi_device');
+    expect(args[args.indexOf('-vaapi_device') + 1]).toBe('/dev/dri/renderD130');
+    expect(args).toContain('h264_vaapi');
+    expect(args).toContain('-vf');
+    expect(args[args.indexOf('-vf') + 1]).toBe('format=nv12,hwupload,scale_vaapi=-2:720');
+  });
 });
 
 describe('selectHwAccelMode', () => {
   it('returns none when requested mode is none', () => {
-    const env: HwAccelEnv = { deviceExists: () => true, unavailable: new Set() };
+    const env: HwAccelEnv = { deviceExists: () => true };
     expect(selectHwAccelMode('none', env)).toBe('none');
   });
 
   it('falls back to none when no device exists in auto mode', () => {
-    const env: HwAccelEnv = { deviceExists: () => false, unavailable: new Set() };
+    const env: HwAccelEnv = { deviceExists: () => false };
     expect(selectHwAccelMode('auto', env)).toBe('none');
+  });
+
+  it('uses configured DRI device path for VAAPI detection', () => {
+    const env: HwAccelEnv = {
+      hwaccelDevice: '/dev/dri/renderD129',
+      deviceExists: (p) => p === '/dev/dri/renderD129',
+    };
+    expect(selectHwAccelMode('vaapi', env)).toBe('vaapi');
   });
 });

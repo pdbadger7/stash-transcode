@@ -27,6 +27,7 @@ const hlsStream = new HLSStream({
   cacheDir: config.hlsCacheDir,
   ffmpegPath: config.ffmpegPath,
   hwaccel: config.hwaccel,
+  hwaccelDevice: config.hwaccelDevice,
   segmentDuration: config.hlsSegmentDuration,
   lookaheadSegments: config.hlsLookaheadSegments,
   maxSessions: config.hlsMaxSessions,
