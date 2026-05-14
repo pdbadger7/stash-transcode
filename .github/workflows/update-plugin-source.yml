@@ -1,0 +1,54 @@
+name: Update plugin source artifacts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - plugin/**
+      - package.json
+      - package-lock.json
+      - .github/workflows/update-plugin-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-plugin-source-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin package and source index
+        run: npm run build:plugin
+
+      - name: Commit updated artifacts
+        shell: bash
+        run: |
+          if git diff --quiet -- plugin-source docs; then
+            echo "No plugin-source/docs changes to commit."
+            exit 0
+          fi
+
+          git config user.name "pdbadger7"
+          git config user.email "pdbadger7@users.noreply.github.com"
+          git add plugin-source docs
+          git commit -m "chore(plugin): update plugin-source artifacts"
+          git push
