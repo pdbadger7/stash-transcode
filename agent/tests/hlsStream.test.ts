@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DEFAULT_HLS_PROFILES, HLSStream } from '../src/hlsStream';
+import {
+  DEFAULT_HLS_PROFILES,
+  HLSStream,
+  VariantPlaylistNotReadyError,
+} from '../src/hlsStream';
 import * as fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -17,6 +21,8 @@ describe('HLSStream', () => {
       segmentDuration: 4,
       enableDebug: false,
       hardwareAccelProbe: () => false,
+      variantPlaylistWaitMs: 50,
+      variantPlaylistPollMs: 10,
     });
   });
 
@@ -41,15 +47,14 @@ describe('HLSStream', () => {
     expect(playlist).toContain('/stash/scene/scene-123/variant/720p/master.m3u8');
   });
 
-  it('should generate a placeholder variant playlist', async () => {
-    const playlist = await hlsStream.getVariantPlaylist(
-      'scene-123',
-      '720p',
-      '/input/video.mkv'
-    );
-    expect(playlist).toContain('#EXTM3U');
-    expect(playlist).toContain('#EXT-X-TARGETDURATION:4');
-    expect(playlist).toContain('720p transcoding in progress');
+  it('should throw while variant playlist has no segments yet', async () => {
+    await expect(
+      hlsStream.getVariantPlaylist(
+        'scene-123',
+        '720p',
+        '/input/video.mkv'
+      )
+    ).rejects.toBeInstanceOf(VariantPlaylistNotReadyError);
   });
 
   it('should rewrite variant playlist segment URIs to absolute variant paths', async () => {

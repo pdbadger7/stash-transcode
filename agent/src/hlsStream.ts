@@ -16,6 +16,8 @@ export interface HLSConfig {
   enableDebug?: boolean;
   profiles?: HLSProfile[];
   hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
+  variantPlaylistWaitMs?: number;
+  variantPlaylistPollMs?: number;
 }
 
 interface TranscodingProcess {
@@ -53,6 +55,16 @@ export const DEFAULT_HLS_PROFILES: HLSProfile[] = [
   },
 ];
 
+export class VariantPlaylistNotReadyError extends Error {
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds = 2) {
+    super('Variant playlist not ready');
+    this.name = 'VariantPlaylistNotReadyError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 export class HLSStream {
   private cacheDir: string;
   private ffmpegPath: string;
@@ -61,6 +73,8 @@ export class HLSStream {
   private enableDebug: boolean;
   private profiles: HLSProfile[];
   private hardwareAccelProbe?: (mode: HardwareAccelMode) => boolean;
+  private variantPlaylistWaitMs: number;
+  private variantPlaylistPollMs: number;
   private activeTranscodes = new Map<string, TranscodingProcess>();
   private launchingTranscodes = new Set<string>();
   private unavailableHwaccel = new Set<HardwareAccelMode>();
@@ -73,6 +87,8 @@ export class HLSStream {
     this.enableDebug = config.enableDebug || false;
     this.profiles = config.profiles ?? DEFAULT_HLS_PROFILES;
     this.hardwareAccelProbe = config.hardwareAccelProbe;
+    this.variantPlaylistWaitMs = config.variantPlaylistWaitMs ?? 12_000;
+    this.variantPlaylistPollMs = config.variantPlaylistPollMs ?? 250;
   }
 
   async getMasterPlaylist(
@@ -96,13 +112,14 @@ export class HLSStream {
     const playlistPath = path.join(sceneDir, 'master.m3u8');
     const key = this.getTranscodeKey(sceneId, profile.id);
 
-    if (existsSync(playlistPath)) {
-      const playlist = await fs.readFile(playlistPath, 'utf-8');
-      return this.rewritePlaylistUris(
-        playlist,
-        token,
-        `/stash/scene/${sceneId}/variant/${profile.id}`
-      );
+    const readyPlaylist = await this.readReadyVariantPlaylist(
+      sceneId,
+      profile.id,
+      playlistPath,
+      token
+    );
+    if (readyPlaylist) {
+      return readyPlaylist;
     }
 
     if (!this.activeTranscodes.has(key) && !this.launchingTranscodes.has(key)) {
@@ -118,7 +135,19 @@ export class HLSStream {
       );
     }
 
-    return this.generatePlaceholderPlaylist(profile);
+    const waitedPlaylist = await this.waitForReadyVariantPlaylist(
+      sceneId,
+      profile.id,
+      playlistPath,
+      token
+    );
+    if (waitedPlaylist) {
+      return waitedPlaylist;
+    }
+
+    throw new VariantPlaylistNotReadyError(
+      Math.max(1, Math.ceil(this.segmentDuration / 2))
+    );
   }
 
   async getSegment(
@@ -407,15 +436,65 @@ export class HLSStream {
     return `${uri}${separator}token=${encodeURIComponent(token)}`;
   }
 
-  private generatePlaceholderPlaylist(profile: HLSProfile): string {
-    return [
-      '#EXTM3U',
-      '#EXT-X-VERSION:3',
-      `#EXT-X-TARGETDURATION:${this.segmentDuration}`,
-      '#EXT-X-MEDIA-SEQUENCE:0',
-      `# ${profile.label} transcoding in progress`,
-      '',
-    ].join('\n');
+  private async waitForReadyVariantPlaylist(
+    sceneId: string,
+    profileId: string,
+    playlistPath: string,
+    token?: string
+  ): Promise<string | null> {
+    if (this.variantPlaylistWaitMs <= 0) {
+      return null;
+    }
+
+    const deadline = Date.now() + this.variantPlaylistWaitMs;
+    while (Date.now() < deadline) {
+      const playlist = await this.readReadyVariantPlaylist(
+        sceneId,
+        profileId,
+        playlistPath,
+        token
+      );
+      if (playlist) {
+        return playlist;
+      }
+
+      await this.sleep(this.variantPlaylistPollMs);
+    }
+
+    return null;
+  }
+
+  private async readReadyVariantPlaylist(
+    sceneId: string,
+    profileId: string,
+    playlistPath: string,
+    token?: string
+  ): Promise<string | null> {
+    if (!existsSync(playlistPath)) {
+      return null;
+    }
+
+    const playlist = await fs.readFile(playlistPath, 'utf-8');
+    if (!this.playlistHasSegments(playlist)) {
+      return null;
+    }
+
+    return this.rewritePlaylistUris(
+      playlist,
+      token,
+      `/stash/scene/${sceneId}/variant/${profileId}`
+    );
+  }
+
+  private playlistHasSegments(playlist: string): boolean {
+    return playlist
+      .split('\n')
+      .map((line) => line.trim())
+      .some((line) => line.length > 0 && !line.startsWith('#'));
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private getSceneProfileDir(sceneId: string, profileId: string): string {

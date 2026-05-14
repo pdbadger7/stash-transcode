@@ -5,7 +5,11 @@ import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
-import { DEFAULT_HLS_PROFILES, HLSStream } from './hlsStream.js';
+import {
+  DEFAULT_HLS_PROFILES,
+  HLSStream,
+  VariantPlaylistNotReadyError,
+} from './hlsStream.js';
 import {
   parseRangeHeader,
   getFileSize,
@@ -279,6 +283,14 @@ app.get<{
       .header('Cache-Control', 'no-cache')
       .send(playlist);
   } catch (err) {
+    if (err instanceof VariantPlaylistNotReadyError) {
+      return reply
+        .code(503)
+        .header('Retry-After', String(err.retryAfterSeconds))
+        .header('Content-Type', 'text/plain; charset=utf-8')
+        .send(err.message);
+    }
+
     console.error(`Failed to generate variant playlist for scene ${id}:`, err);
     return reply.code(404).send({
       ok: false,
