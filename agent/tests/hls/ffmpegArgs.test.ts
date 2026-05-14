@@ -32,6 +32,10 @@ describe('buildSingleSegmentArgs', () => {
     expect(args[ssIdx + 1]).toBe('40');
     expect(args).toContain('-output_ts_offset');
     expect(args[args.indexOf('-output_ts_offset') + 1]).toBe('40');
+    expect(args).toContain('-fflags');
+    expect(args[args.indexOf('-fflags') + 1]).toBe('+genpts');
+    expect(args).toContain('-avoid_negative_ts');
+    expect(args[args.indexOf('-avoid_negative_ts') + 1]).toBe('make_zero');
     expect(args).not.toContain('-copyts');
     expect(args).toContain('-t');
     expect(args).toContain('4');
@@ -159,6 +163,10 @@ describe('buildSessionArgs', () => {
     expect(args[ssIdx + 1]).toBe('400');
     expect(args).toContain('-t');
     expect(args[args.indexOf('-t') + 1]).toBe('60');
+    expect(args).toContain('-fflags');
+    expect(args[args.indexOf('-fflags') + 1]).toBe('+genpts');
+    expect(args).toContain('-avoid_negative_ts');
+    expect(args[args.indexOf('-avoid_negative_ts') + 1]).toBe('make_zero');
     expect(args).toContain('-start_number');
     expect(args[args.indexOf('-start_number') + 1]).toBe('100');
     expect(args).toContain('-hls_segment_filename');

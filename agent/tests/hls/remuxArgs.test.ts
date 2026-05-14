@@ -27,6 +27,22 @@ describe('buildRemuxHlsArgs', () => {
     expect(args[args.indexOf('-hls_segment_filename') + 1]).toBe('/tmp/remux/sc1/segment_%03d.m4s');
   });
 
+  it('normalizes timestamps to avoid initial PTS holes in remux output', () => {
+    const args = buildRemuxHlsArgs({
+      inputPath: '/m/video.mp4',
+      outputDir: '/tmp/remux/sc1',
+      segmentDuration: 4,
+      videoCodec: 'h264',
+    });
+
+    expect(args).toContain('-copyts');
+    expect(args).toContain('-start_at_zero');
+    expect(args).toContain('-muxdelay');
+    expect(args[args.indexOf('-muxdelay') + 1]).toBe('0');
+    expect(args).toContain('-muxpreload');
+    expect(args[args.indexOf('-muxpreload') + 1]).toBe('0');
+  });
+
   it('tags HEVC remux output as hvc1 for client compatibility', () => {
     const args = buildRemuxHlsArgs({
       inputPath: '/m/video.mp4',

@@ -492,6 +492,20 @@ app.get<{
   const { id } = request.params;
   const { token } = request.query;
 
+  // Explicitly set CORS headers for this endpoint
+  const origin = request.headers.origin;
+  if (origin) {
+    const isOriginAllowed =
+      config.corsAllowedOrigins === true ||
+      (Array.isArray(config.corsAllowedOrigins) && config.corsAllowedOrigins.includes(origin));
+
+    if (isOriginAllowed) {
+      reply
+        .header('Access-Control-Allow-Origin', origin)
+        .header('Access-Control-Allow-Credentials', 'true');
+    }
+  }
+
   if (!authValidator.validateQueryToken(token)) {
     return reply.code(403).send({ ok: false, error: 'Unauthorized' });
   }
@@ -537,6 +551,20 @@ app.get<{
 }>('/stash/scene/:id/remux/:assetName', async (request, reply) => {
   const { id, assetName } = request.params;
   const { token } = request.query;
+
+  // Explicitly set CORS headers for this endpoint
+  const origin = request.headers.origin;
+  if (origin) {
+    const isOriginAllowed =
+      config.corsAllowedOrigins === true ||
+      (Array.isArray(config.corsAllowedOrigins) && config.corsAllowedOrigins.includes(origin));
+
+    if (isOriginAllowed) {
+      reply
+        .header('Access-Control-Allow-Origin', origin)
+        .header('Access-Control-Allow-Credentials', 'true');
+    }
+  }
 
   if (!authValidator.validateQueryToken(token)) {
     return reply.code(403).send({ ok: false, error: 'Unauthorized' });

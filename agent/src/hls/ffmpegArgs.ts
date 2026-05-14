@@ -146,7 +146,9 @@ export function buildSingleSegmentArgs(input: SingleSegmentArgsInput): string[] 
   args.push('-ss', String(startSeconds));
   args.push('-i', inputPath);
   args.push('-t', String(durationSeconds));
+  args.push('-fflags', '+genpts');
   args.push('-output_ts_offset', String(startSeconds));
+  args.push('-avoid_negative_ts', 'make_zero');
   args.push('-muxdelay', '0', '-muxpreload', '0');
   args.push('-map', '0:v:0');
   args.push('-map', '0:a:0?');
@@ -189,7 +191,9 @@ export function buildSessionArgs(input: SessionArgsInput): string[] {
   if (input.segmentCount && input.segmentCount > 0) {
     args.push('-t', String(input.segmentCount * segmentDuration));
   }
+  args.push('-fflags', '+genpts');
   args.push('-copyts', '-muxdelay', '0', '-muxpreload', '0');
+  args.push('-avoid_negative_ts', 'make_zero');
   args.push('-map', '0:v:0', '-map', '0:a:0?');
   args.push('-c:v', videoCodec(mode));
   args.push(...videoFilterArgs(mode, profile));
