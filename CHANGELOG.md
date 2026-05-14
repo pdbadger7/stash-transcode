@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8 - 2026-05-14
+
+- Wait for remux fMP4 playlists to include a ready `EXT-X-MAP` init segment and first media segment before serving them to hls.js.
+- Avoid exposing empty remux assets while ffmpeg is still finalizing segment output.
+
 ## 0.3.4 - 2026-05-14
 
 - Generate remux HLS playlists as `EVENT` playlists so playback can start once the first fMP4 segment is ready instead of waiting for full VOD remux completion.

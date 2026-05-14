@@ -99,6 +99,65 @@ describe('RemuxHLSStream', () => {
     await closeStream(asset?.stream);
   });
 
+  it('does not serve an fMP4 playlist until the init segment and first media segment are ready', async () => {
+    const cacheDir = await makeTempDir();
+    dirs.push(cacheDir);
+    const spawn = vi.fn((_: string, args: string[]) => {
+      const proc = makeProc();
+      const segmentPattern = args[args.indexOf('-hls_segment_filename') + 1];
+      const outputDir = path.dirname(segmentPattern);
+      setImmediate(async () => {
+        await fs.mkdir(outputDir, { recursive: true });
+        await fs.writeFile(
+          path.join(outputDir, 'master.m3u8'),
+          [
+            '#EXTM3U',
+            '#EXT-X-VERSION:7',
+            '#EXT-X-PLAYLIST-TYPE:EVENT',
+            '#EXTINF:4.000,',
+            'segment_000.m4s',
+            '',
+          ].join('\n')
+        );
+        setTimeout(async () => {
+          await fs.writeFile(path.join(outputDir, 'init.mp4'), Buffer.from('INIT'));
+          await fs.writeFile(path.join(outputDir, 'segment_000.m4s'), Buffer.from('SEG0'));
+          await fs.writeFile(
+            path.join(outputDir, 'master.m3u8'),
+            [
+              '#EXTM3U',
+              '#EXT-X-VERSION:7',
+              '#EXT-X-PLAYLIST-TYPE:EVENT',
+              '#EXT-X-MAP:URI="init.mp4"',
+              '#EXTINF:4.000,',
+              'segment_000.m4s',
+              '',
+            ].join('\n')
+          );
+        }, 25);
+      });
+      return proc;
+    });
+
+    const remux = new RemuxHLSStream({
+      cacheDir,
+      ffmpegPath: 'ffmpeg',
+      segmentDuration: 4,
+      allowedVideoCodecs: ['h264'],
+      readyTimeoutMs: 1000,
+      spawn,
+    });
+
+    const playlist = await remux.getPlaylist({
+      sceneId: 'sc-ready',
+      inputPath: '/m/v.mp4',
+      sourceMetadata: { durationSeconds: 10, videoCodec: 'h264' },
+    });
+
+    expect(playlist).toContain('#EXT-X-MAP:URI="/stash/scene/sc-ready/remux/init.mp4"');
+    expect(playlist).toContain('/stash/scene/sc-ready/remux/segment_000.m4s');
+  });
+
   it('keeps an in-progress playlist as EVENT so generated segments remain seekable', async () => {
     const cacheDir = await makeTempDir();
     dirs.push(cacheDir);

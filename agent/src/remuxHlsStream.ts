@@ -83,11 +83,11 @@ export class RemuxHLSStream {
     const playlistPath = path.join(outputDir, 'master.m3u8');
 
     const { job } = await this.ensureRemux(input.sceneId, input.inputPath, input.sourceMetadata);
-    if (!(await waitForFileOrJob(playlistPath, this.readyTimeoutMs, job))) {
+    const playlist = await waitForReadyPlaylistOrJob(playlistPath, outputDir, this.readyTimeoutMs, job);
+    if (!playlist) {
       throw new RemuxNotReadyError();
     }
 
-    const playlist = await fs.readFile(playlistPath, 'utf8');
     return rewritePlaylist(playlist, {
       sceneId: input.sceneId,
       token: input.token,
@@ -101,7 +101,7 @@ export class RemuxHLSStream {
     }
 
     const assetPath = path.join(this.outputDir(input.sceneId), input.assetName);
-    if (!(await waitForFile(assetPath, this.readyTimeoutMs))) {
+    if (!(await waitForNonEmptyFile(assetPath, this.readyTimeoutMs))) {
       if (this.jobs.has(input.sceneId)) throw new RemuxNotReadyError();
       return null;
     }
@@ -250,37 +250,94 @@ function withToken(uri: string, token?: string): string {
   return `${uri}${sep}token=${encodeURIComponent(token)}`;
 }
 
-async function waitForFile(filePath: string, timeoutMs: number): Promise<boolean> {
+async function waitForNonEmptyFile(filePath: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() <= deadline) {
+  do {
     try {
-      await fs.access(filePath, fsConstants.R_OK);
-      return true;
+      const stat = await fs.stat(filePath);
+      if (stat.size > 0) {
+        await fs.access(filePath, fsConstants.R_OK);
+        return true;
+      }
     } catch {
       if (Date.now() >= deadline) return false;
-      await sleep(75);
     }
-  }
+    if (Date.now() >= deadline) return false;
+    await sleep(75);
+  } while (Date.now() <= deadline);
   return false;
 }
 
-async function waitForFileOrJob(
-  filePath: string,
+async function waitForReadyPlaylistOrJob(
+  playlistPath: string,
+  outputDir: string,
   timeoutMs: number,
   job?: Promise<void>
-): Promise<boolean> {
-  if (!job) return waitForFile(filePath, timeoutMs);
-  const ready = waitForFile(filePath, timeoutMs);
+): Promise<string | null> {
+  if (!job) return waitForReadyPlaylist(playlistPath, outputDir, timeoutMs);
+  const ready = waitForReadyPlaylist(playlistPath, outputDir, timeoutMs);
   const result = await Promise.race([
     ready,
     job.then(
-      async () => waitForFile(filePath, 0),
+      async () => waitForReadyPlaylist(playlistPath, outputDir, 0),
       (err) => {
         throw err;
       }
     ),
   ]);
   return result;
+}
+
+async function waitForReadyPlaylist(
+  playlistPath: string,
+  outputDir: string,
+  timeoutMs: number
+): Promise<string | null> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const playlist = await readReadyPlaylist(playlistPath, outputDir);
+    if (playlist) return playlist;
+    if (Date.now() >= deadline) return null;
+    await sleep(75);
+  } while (Date.now() <= deadline);
+  return null;
+}
+
+async function readReadyPlaylist(playlistPath: string, outputDir: string): Promise<string | null> {
+  let playlist: string;
+  try {
+    playlist = await fs.readFile(playlistPath, 'utf8');
+  } catch {
+    return null;
+  }
+
+  const initAsset = extractInitAsset(playlist);
+  const firstSegment = extractFirstSegment(playlist);
+  if (!initAsset || !firstSegment) return null;
+  if (!ASSET_RE.test(initAsset) || !ASSET_RE.test(firstSegment)) return null;
+
+  const [initReady, segmentReady] = await Promise.all([
+    waitForNonEmptyFile(path.join(outputDir, initAsset), 0),
+    waitForNonEmptyFile(path.join(outputDir, firstSegment), 0),
+  ]);
+  return initReady && segmentReady ? playlist : null;
+}
+
+function extractInitAsset(playlist: string): string | null {
+  for (const line of playlist.split('\n')) {
+    if (!line.startsWith('#EXT-X-MAP:')) continue;
+    const match = /URI="([^"]+)"/.exec(line);
+    return match?.[1] ?? null;
+  }
+  return null;
+}
+
+function extractFirstSegment(playlist: string): string | null {
+  for (const line of playlist.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) return trimmed;
+  }
+  return null;
 }
 
 function runFfmpeg(
