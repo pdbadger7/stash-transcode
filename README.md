@@ -215,6 +215,8 @@ FFMPEG_PATH=/usr/bin/ffmpeg                 # For HLS transcoding (Phase 2)
 HWACCEL=auto                                # none|auto|vaapi|qsv|nvenc
 HWACCEL_DEVICE=/dev/dri/renderD128          # VAAPI/QSV render device when HWACCEL uses /dev/dri
 HLS_SEGMENT_DURATION=4                      # Main HLS segment duration (seconds)
+REMUX_HLS_VIDEO_CODECS=h264,hevc            # Video codecs eligible for copy-only fMP4 HLS
+REMUX_HLS_READY_TIMEOUT_MS=30000            # How long remux endpoints wait for playlist/assets
 HLS_STARTUP_SEGMENT_DURATION=1              # Short startup segment target (seconds)
 HLS_VARIANT_WAIT_MS=30000                   # Wait for first media segments before returning 503
 HLS_VARIANT_POLL_MS=250                     # Poll interval while waiting for first segments
@@ -306,6 +308,18 @@ Adaptive HLS master manifest.
 ```bash
 curl 'https://video.home/stash/scene/123/master.m3u8?token=secret&quality=720p'
 ```
+
+### GET /stash/scene/:id/remux/master.m3u8
+
+Copy-only fMP4 HLS for already-compatible sources. This remuxes allowlisted video
+codecs such as H.264 and HEVC without scaling, filtering, or video encoding.
+
+```bash
+curl 'https://video.home/stash/scene/123/remux/master.m3u8?token=secret'
+```
+
+Returns HTTP 422 when the source codec is not eligible and HTTP 503 with
+`Retry-After` while the remux playlist or segment is still being prepared.
 
 ### GET /stash/scene/:id/variant/:profile/master.m3u8
 

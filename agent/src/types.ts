@@ -46,6 +46,8 @@ export interface Config {
   hlsLookaheadSegments: number;
   hlsMaxSessions: number;
   hlsSegmentTimeoutMs: number;
+  remuxHlsVideoCodecs: string[];
+  remuxHlsReadyTimeoutMs: number;
   port: number;
   agentSharedToken?: string;
   corsAllowedOrigins: true | string[];

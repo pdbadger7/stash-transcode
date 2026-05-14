@@ -9,6 +9,17 @@ const pathMappingSchema = z
     return { from: parts[0], to: parts[1] };
   });
 
+const csvListSchema = (defaultValue: string) =>
+  z
+    .string()
+    .optional()
+    .transform((s) =>
+      (s ?? defaultValue)
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+    );
+
 const configSchema = z.object({
   stashGraphqlUrl: z.string().url(),
   stashApiKey: z.string(),
@@ -27,6 +38,8 @@ const configSchema = z.object({
   hlsLookaheadSegments: z.coerce.number().int().positive().default(15),
   hlsMaxSessions: z.coerce.number().int().positive().default(4),
   hlsSegmentTimeoutMs: z.coerce.number().int().positive().default(45000),
+  remuxHlsVideoCodecs: csvListSchema('h264,hevc'),
+  remuxHlsReadyTimeoutMs: z.coerce.number().int().positive().default(30000),
   port: z.coerce.number().default(8080),
   agentSharedToken: z.string().optional(),
   corsAllowedOrigins: z
@@ -71,6 +84,8 @@ export function loadConfig(): Config {
     hlsLookaheadSegments: env.HLS_LOOKAHEAD_SEGMENTS,
     hlsMaxSessions: env.HLS_MAX_SESSIONS,
     hlsSegmentTimeoutMs: env.HLS_SEGMENT_TIMEOUT_MS,
+    remuxHlsVideoCodecs: env.REMUX_HLS_VIDEO_CODECS,
+    remuxHlsReadyTimeoutMs: env.REMUX_HLS_READY_TIMEOUT_MS,
     port: env.PORT || '8080',
     agentSharedToken: env.AGENT_SHARED_TOKEN,
     corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS,

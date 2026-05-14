@@ -33,6 +33,8 @@ services:
       FFMPEG_PATH: /usr/bin/ffmpeg
       HWACCEL: auto
       HWACCEL_DEVICE: /dev/dri/renderD128
+      REMUX_HLS_VIDEO_CODECS: h264,hevc
+      REMUX_HLS_READY_TIMEOUT_MS: 30000
       PORT: 8080
       AGENT_SHARED_TOKEN: ${AGENT_SHARED_TOKEN:-}
       CORS_ALLOWED_ORIGINS: "*"

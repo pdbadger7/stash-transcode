@@ -6,6 +6,11 @@ import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
 import { AuthValidator } from './auth.js';
 import { HLSStream, type SourceVideoMetadata } from './hlsStream.js';
+import {
+  RemuxHLSStream,
+  RemuxNotEligibleError,
+  RemuxNotReadyError,
+} from './remuxHlsStream.js';
 import { DEFAULT_HLS_PROFILES } from './hls/profiles.js';
 import {
   parseRangeHeader,
@@ -32,6 +37,14 @@ const hlsStream = new HLSStream({
   lookaheadSegments: config.hlsLookaheadSegments,
   maxSessions: config.hlsMaxSessions,
   singleSegmentTimeoutMs: config.hlsSegmentTimeoutMs,
+  enableDebug: process.env.DEBUG === 'true',
+});
+const remuxHlsStream = new RemuxHLSStream({
+  cacheDir: config.hlsCacheDir,
+  ffmpegPath: config.ffmpegPath,
+  segmentDuration: config.hlsSegmentDuration,
+  allowedVideoCodecs: config.remuxHlsVideoCodecs,
+  readyTimeoutMs: config.remuxHlsReadyTimeoutMs,
   enableDebug: process.env.DEBUG === 'true',
 });
 
@@ -138,7 +151,19 @@ app.get<{ Params: { id: string }; Querystring: { token?: string; quality?: strin
     return {
       ok: true,
       scene_id: scene.id,
-      mode: ['direct', 'hls'],
+      mode: [
+        'direct',
+        'hls',
+        ...(remuxHlsStream.canRemux({
+          durationSeconds: file.duration,
+          width: file.width,
+          height: file.height,
+          fps: file.frame_rate,
+          videoCodec: file.video_codec,
+        })
+          ? ['remux-hls']
+          : []),
+      ],
       path_mapped: true,
       duration_seconds: file.duration,
       width: file.width,
@@ -432,6 +457,92 @@ app.get<{
   }
 });
 
+app.get<{
+  Params: { id: string };
+  Querystring: { token?: string };
+}>('/stash/scene/:id/remux/master.m3u8', async (request, reply) => {
+  const { id } = request.params;
+  const { token } = request.query;
+
+  if (!authValidator.validateQueryToken(token)) {
+    return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const sceneContext = await resolveSceneInputContext(id);
+    if (!sceneContext) {
+      return reply.code(404).send({ ok: false, error: 'Scene not found' });
+    }
+
+    const playlist = await remuxHlsStream.getPlaylist({
+      sceneId: id,
+      inputPath: sceneContext.inputPath,
+      sourceMetadata: sceneContext.sourceMetadata,
+      token,
+    });
+
+    reply
+      .header('Content-Type', remuxHlsStream.getPlaylistMimeType())
+      .header('Cache-Control', 'no-cache')
+      .send(playlist);
+  } catch (err) {
+    if (err instanceof RemuxNotEligibleError) {
+      return reply.code(422).send({ ok: false, error: err.message });
+    }
+    if (err instanceof RemuxNotReadyError) {
+      return reply
+        .code(503)
+        .header('Retry-After', String(err.retryAfterSeconds))
+        .send({ ok: false, error: err.message });
+    }
+    console.error(`Failed to generate remux HLS playlist for scene ${id}:`, err);
+    return reply.code(500).send({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to generate remux HLS',
+    });
+  }
+});
+
+app.get<{
+  Params: { id: string; assetName: string };
+  Querystring: { token?: string };
+}>('/stash/scene/:id/remux/:assetName', async (request, reply) => {
+  const { id, assetName } = request.params;
+  const { token } = request.query;
+
+  if (!authValidator.validateQueryToken(token)) {
+    return reply.code(403).send({ ok: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const asset = await remuxHlsStream.getAsset({ sceneId: id, assetName });
+    if (!asset) {
+      return reply.code(404).send({ ok: false, error: 'Remux asset not found' });
+    }
+
+    reply
+      .header('Content-Type', remuxHlsStream.getAssetMimeType(assetName))
+      .header('Cache-Control', 'public, max-age=3600')
+      .header('Content-Length', String(asset.length))
+      .send(asset);
+  } catch (err) {
+    if (err instanceof RemuxNotReadyError) {
+      return reply
+        .code(503)
+        .header('Retry-After', String(err.retryAfterSeconds))
+        .send({ ok: false, error: err.message });
+    }
+    if (err instanceof Error && /invalid remux asset/i.test(err.message)) {
+      return reply.code(400).send({ ok: false, error: 'Invalid remux asset name' });
+    }
+    console.error(`Failed to serve remux asset ${assetName} for scene ${id}:`, err);
+    return reply.code(500).send({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Failed to serve remux asset',
+    });
+  }
+});
+
 // Cleanup old transcodes periodically (every 30 minutes)
 setInterval(() => {
   hlsStream.cleanupOldTranscodes();
@@ -439,6 +550,7 @@ setInterval(() => {
 
 app.addHook('onClose', async () => {
   hlsStream.shutdown();
+  remuxHlsStream.shutdown();
 });
 
 // Start server

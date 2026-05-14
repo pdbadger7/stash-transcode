@@ -127,6 +127,7 @@ export function getMimeType(filePath: string): string {
     flv: 'video/x-flv',
     wmv: 'video/x-ms-wmv',
     m4v: 'video/x-m4v',
+    m4s: 'video/iso.segment',
     ts: 'video/mp2t',
     m3u8: 'application/vnd.apple.mpegurl',
   };
