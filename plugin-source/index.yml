@@ -1,8 +1,8 @@
 - id: external-transcode-player
   name: External Transcode Player
   version: 0.1.3
-  date: 2026-05-14 19:02:38
+  date: 2026-05-14 20:21:15
   path: packages/external-transcode-player-0.1.3.zip
-  sha256: 0f5b7612e010740be881b1f7bd6abe82b4482e0cfcb7b764f852c5ca8e484fc5
+  sha256: abad8f1bb2b729a8282a9818bdaebb64f6c6dbf75c0854ded74b6b6da2f604e2
   metadata:
     manifest: external-transcode-player.yml
