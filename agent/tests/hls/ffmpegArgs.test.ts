@@ -16,7 +16,7 @@ const PROFILE = {
 };
 
 describe('buildSingleSegmentArgs', () => {
-  it('includes output-seek after -i and writes mpegts to stdout', () => {
+  it('includes input-seek before -i, output_ts_offset, and writes mpegts to stdout', () => {
     const args = buildSingleSegmentArgs({
       inputPath: '/m/video.mp4',
       profile: PROFILE,
@@ -28,9 +28,11 @@ describe('buildSingleSegmentArgs', () => {
     const ssIdx = args.indexOf('-ss');
     const iIdx = args.indexOf('-i');
     expect(ssIdx).toBeGreaterThanOrEqual(0);
-    expect(ssIdx).toBeGreaterThan(iIdx);
+    expect(ssIdx).toBeLessThan(iIdx);
     expect(args[ssIdx + 1]).toBe('40');
-    expect(args).toContain('-copyts');
+    expect(args).toContain('-output_ts_offset');
+    expect(args[args.indexOf('-output_ts_offset') + 1]).toBe('40');
+    expect(args).not.toContain('-copyts');
     expect(args).toContain('-t');
     expect(args).toContain('4');
     expect(args).toContain('-f');
