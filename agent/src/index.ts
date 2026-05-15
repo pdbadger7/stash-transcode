@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
-import { constants as fsConstants, promises as fs } from 'fs';
+import { constants as fsConstants, promises as fs, readFileSync } from 'fs';
 import { loadConfig } from './config.js';
 import { StashClient } from './stashClient.js';
 import { PathMapper } from './pathMapper.js';
@@ -21,6 +21,9 @@ import {
 import { SceneContextCache, type SceneInputContext } from './sceneContextCache.js';
 
 const config = loadConfig();
+const agentPackage = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+) as { version: string };
 const stashClient = new StashClient(
   config.stashGraphqlUrl,
   config.stashApiKey,
@@ -100,7 +103,11 @@ await app.register(fastifyCors, {
 
 // Health check
 app.get('/health', async () => {
-  return { ok: true, timestamp: new Date().toISOString() };
+  return {
+    ok: true,
+    version: agentPackage.version,
+    timestamp: new Date().toISOString(),
+  };
 });
 
 // Probe endpoint - check if scene can be served
