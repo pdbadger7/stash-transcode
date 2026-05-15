@@ -28,7 +28,10 @@ export interface PluginSettings {
 export interface ProbeResponse {
   ok: boolean;
   error?: string;
+  mode?: ProbePlaybackMode[];
 }
+
+export type ProbePlaybackMode = 'direct' | 'hls' | 'remux-hls';
 
 export type PlaybackQualityId =
   | 'auto'

@@ -1,4 +1,59 @@
-import type { ProbeResponse } from './types.js';
+import { DEFAULT_SETTINGS } from './settings.js';
+import type { PluginSettings, ProbeResponse } from './types.js';
+
+export interface PlaybackPlan {
+  mode: PluginSettings['playbackMode'];
+  pathPattern: string;
+}
+
+function isRemuxPathPattern(pathPattern: string): boolean {
+  return /(^|\/)remux(\/|$)/.test(pathPattern);
+}
+
+/**
+ * Pick a playback route that matches the agent probe result.
+ * Remux HLS is an optimization for compatible source codecs, not a guarantee.
+ */
+export function resolvePlaybackPlan(
+  settings: PluginSettings,
+  probe?: ProbeResponse
+): PlaybackPlan | null {
+  const advertisedModes = probe?.mode;
+
+  if (settings.playbackMode === 'direct') {
+    if (advertisedModes && !advertisedModes.includes('direct')) {
+      return null;
+    }
+    return {
+      mode: 'direct',
+      pathPattern: settings.directPathPattern,
+    };
+  }
+
+  const wantsRemux = isRemuxPathPattern(settings.hlsPathPattern);
+  if (advertisedModes) {
+    if (wantsRemux && advertisedModes.includes('remux-hls')) {
+      return {
+        mode: 'hls',
+        pathPattern: settings.hlsPathPattern,
+      };
+    }
+
+    if (advertisedModes.includes('hls')) {
+      return {
+        mode: 'hls',
+        pathPattern: wantsRemux ? DEFAULT_SETTINGS.hlsPathPattern : settings.hlsPathPattern,
+      };
+    }
+
+    return null;
+  }
+
+  return {
+    mode: 'hls',
+    pathPattern: settings.hlsPathPattern,
+  };
+}
 
 /**
  * Build a playback URL for the external agent

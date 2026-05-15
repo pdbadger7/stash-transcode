@@ -1,5 +1,9 @@
 # Changelog
 
+## Plugin 0.1.4 - 2026-05-15
+
+- Fall back from configured remux HLS to standard transcoded HLS when the agent probe does not advertise `remux-hls` for a scene.
+
 ## 0.3.9 - 2026-05-14
 
 - Serve remux fMP4 assets from validated bytes instead of the Fastify file-stream path that could return empty `200 OK` responses in production.

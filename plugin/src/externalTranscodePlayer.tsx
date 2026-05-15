@@ -1,6 +1,6 @@
 import { React } from './runtime.js';
 import { GQL } from './runtime.js';
-import { buildPlaybackUrl, probeExternalAgent } from './stashApi.js';
+import { buildPlaybackUrl, probeExternalAgent, resolvePlaybackPlan } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
 import { buildOriginalPlayerProps } from './playerProps.js';
 import { resolveSettings } from './settings.js';
@@ -8,6 +8,7 @@ import type {
   PlaybackQualityId,
   StashScene,
   PluginSettings,
+  ProbeResponse,
 } from './types.js';
 
 const { useState, useEffect, useMemo } = React;
@@ -36,6 +37,9 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   const [useExternal, setUseExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [externalMode, setExternalMode] = useState<PluginSettings['playbackMode']>(
+    resolvedSettings.playbackMode
+  );
   const [quality, setQuality] = useState<PlaybackQualityId>('auto');
 
   useEffect(() => {
@@ -62,11 +66,12 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
     const initializeExternalPlayer = async () => {
       try {
+        let probeResult: ProbeResponse | undefined;
         // Probe if enabled
         if (resolvedSettings.probeBeforeReplace) {
           if (resolvedSettings.debug)
             console.log(`[ScenePlayerPatch] Probing scene ${scene.id}`);
-          const probeResult = await probeExternalAgent(
+          probeResult = await probeExternalAgent(
             resolvedSettings.externalTranscodeBaseUrl,
             scene.id,
             resolvedSettings.sharedToken,
@@ -93,15 +98,26 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           }
         }
 
-        // Build playback URL
-        const pathPattern =
-          resolvedSettings.playbackMode === 'hls'
-            ? resolvedSettings.hlsPathPattern
-            : resolvedSettings.directPathPattern;
+        const playbackPlan = resolvePlaybackPlan(resolvedSettings, probeResult);
+        if (!playbackPlan) {
+          if (resolvedSettings.debug) {
+            console.log('[ScenePlayerPatch] No compatible external playback mode');
+          }
+
+          if (resolvedSettings.fallbackToStashPlayer) {
+            setUseExternal(false);
+            setError(null);
+            return;
+          }
+
+          setError('No compatible external playback mode');
+          setUseExternal(false);
+          return;
+        }
 
         const url = buildPlaybackUrl(
           resolvedSettings.externalTranscodeBaseUrl,
-          pathPattern,
+          playbackPlan.pathPattern,
           scene.id,
           resolvedSettings.sharedToken,
           quality
@@ -115,6 +131,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           console.log('[ScenePlayerPatch] Using external player:', url);
 
         setPlaybackUrl(url);
+        setExternalMode(playbackPlan.mode);
         setUseExternal(true);
         setError(null);
       } catch (err) {
@@ -184,7 +201,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
     return (
       <ExternalVideoPlayer
         url={playbackUrl}
-        mode={resolvedSettings.playbackMode}
+        mode={externalMode}
         title={scene?.title}
         debug={resolvedSettings.debug}
         selectedQuality={quality}
