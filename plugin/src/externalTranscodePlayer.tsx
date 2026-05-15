@@ -12,6 +12,7 @@ import { buildOriginalPlayerProps } from './playerProps.js';
 import { resolveSettings } from './settings.js';
 import type {
   PlaybackQualityId,
+  PlaybackPlan,
   StashScene,
   PluginSettings,
   ProbeResponse,
@@ -44,6 +45,11 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
   const [externalPlayerLinks, setExternalPlayerLinks] = useState<ExternalPlayerLink[]>([]);
+  const [probeResult, setProbeResult] = useState<ProbeResponse | null>(null);
+  const [playbackPlan, setPlaybackPlan] = useState<PlaybackPlan | null>(null);
+  const [failedPlaybackStrategies, setFailedPlaybackStrategies] = useState<PlaybackPlan['id'][]>(
+    []
+  );
   const [externalMode, setExternalMode] = useState<PluginSettings['playbackMode']>(
     resolvedSettings.playbackMode
   );
@@ -51,6 +57,9 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
   useEffect(() => {
     setQuality('auto');
+    setFailedPlaybackStrategies([]);
+    setProbeResult(null);
+    setPlaybackPlan(null);
   }, [scene?.id]);
 
   if (resolvedSettings.debug) {
@@ -101,8 +110,14 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           return;
         }
 
-        const playbackPlan = resolvePlaybackPlan(resolvedSettings, probeResult);
-        if (!playbackPlan) {
+        setProbeResult(probeResult);
+
+        const nextPlaybackPlan = resolvePlaybackPlan(
+          resolvedSettings,
+          probeResult,
+          new Set(failedPlaybackStrategies)
+        );
+        if (!nextPlaybackPlan) {
           if (resolvedSettings.debug) {
             console.log('[ScenePlayerPatch] No compatible external playback mode');
           }
@@ -120,10 +135,10 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
         const url = buildPlaybackUrl(
           resolvedSettings.externalTranscodeBaseUrl,
-          playbackPlan.pathPattern,
+          nextPlaybackPlan.pathPattern,
           scene.id,
           resolvedSettings.sharedToken,
-          playbackPlan.supportsQuality ? quality : undefined
+          nextPlaybackPlan.supportsQuality ? quality : undefined
         );
         const links = buildExternalPlayerLinks({
           settings: resolvedSettings,
@@ -139,7 +154,8 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           console.log('[ScenePlayerPatch] Using external player:', url);
 
         setPlaybackUrl(url);
-        setExternalMode(playbackPlan.playerMode);
+        setPlaybackPlan(nextPlaybackPlan);
+        setExternalMode(nextPlaybackPlan.playerMode);
         setExternalPlayerLinks(links);
         setUseExternal(true);
         setError(null);
@@ -167,11 +183,36 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
       cancelled = true;
       controller.abort();
     };
-  }, [scene?.id, quality, resolvedSettings]);
+  }, [scene?.id, quality, resolvedSettings, failedPlaybackStrategies]);
 
   // Handle playback error
   const handlePlaybackError = (err: Error) => {
     console.error('[ScenePlayerPatch] Playback error:', err.message);
+
+    if (playbackPlan) {
+      const nextFailedStrategies = Array.from(
+        new Set([...failedPlaybackStrategies, playbackPlan.id])
+      );
+      const nextPlaybackPlan = resolvePlaybackPlan(
+        resolvedSettings,
+        probeResult ?? undefined,
+        new Set(nextFailedStrategies)
+      );
+
+      if (nextPlaybackPlan) {
+        if (resolvedSettings.debug) {
+          console.log(
+            `[ScenePlayerPatch] ${playbackPlan.id} failed; trying ${nextPlaybackPlan.id}`
+          );
+        }
+        setFailedPlaybackStrategies(nextFailedStrategies);
+        setPlaybackPlan(null);
+        setPlaybackUrl(null);
+        setError(null);
+        setUseExternal(false);
+        return;
+      }
+    }
 
     if (resolvedSettings.fallbackToStashPlayer) {
       if (resolvedSettings.debug)

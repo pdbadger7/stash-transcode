@@ -1,5 +1,9 @@
 # Changelog
 
+## Plugin 0.1.8 - 2026-05-15
+
+- Continue down the playback priority list when an external player strategy fails at runtime, so incompatible direct MSE streams can fall back to HLS or Stash.
+
 ## Plugin 0.1.7 - 2026-05-15
 
 - Harden direct MSE playback to use the browser's available MediaSource implementation, including Safari-style ManagedMediaSource/WebKitMediaSource when present.

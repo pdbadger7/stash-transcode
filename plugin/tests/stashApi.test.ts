@@ -95,6 +95,25 @@ describe('resolvePlaybackPlan', () => {
 
     expect(resolvePlaybackPlan(settings, { ok: true, mode: ['direct'] })).toBeNull();
   });
+
+  it('skips failed strategies when resolving the next fallback plan', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['remux-hls', 'hls', 'direct', 'stash'],
+    });
+
+    expect(
+      resolvePlaybackPlan(
+        settings,
+        { ok: true, mode: ['direct', 'hls', 'remux-hls'] },
+        new Set(['remux-hls', 'hls'])
+      )
+    ).toEqual({
+      id: 'direct',
+      playerMode: 'direct',
+      pathPattern: '/stash/scene/{id}/direct',
+      supportsQuality: false,
+    });
+  });
 });
 
 describe('isRemuxPathPattern', () => {

@@ -10,13 +10,15 @@ export function isRemuxPathPattern(pathPattern: string): boolean {
  */
 export function resolvePlaybackPlan(
   settings: PluginSettings,
-  probe?: ProbeResponse
+  probe?: ProbeResponse,
+  failedStrategies: ReadonlySet<PlaybackPlan['id']> = new Set()
 ): PlaybackPlan | null {
   const advertisedModes = probe?.mode;
   if (!advertisedModes) return null;
 
   for (const strategy of settings.playbackPriority) {
     if (strategy === 'stash') return null;
+    if (failedStrategies.has(strategy)) continue;
 
     if (strategy === 'remux-hls' && advertisedModes.includes('remux-hls')) {
       return {
