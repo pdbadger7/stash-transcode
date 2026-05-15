@@ -13,7 +13,7 @@ const packageDir = path.join(sourceRoot, 'packages');
 const buildDir = path.join(sourceRoot, '.build');
 const docsPackageDir = path.join(docsRoot, 'packages');
 const packageName = 'external-transcode-player';
-const version = '0.2.0';
+const version = '0.2.1';
 const packageFile = `${packageName}-${version}.zip`;
 const stagingDir = path.join(buildDir, packageFile.replace(/\.zip$/, ''));
 
