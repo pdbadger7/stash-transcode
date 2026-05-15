@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildExternalPlayerUrl,
+  buildInjectedStreams,
   buildPlaybackUrl,
   isRemuxPathPattern,
   resolvePlaybackPlan,
@@ -161,5 +162,80 @@ describe('buildExternalPlayerUrl', () => {
     ).toBe(
       'iina://weblink?url=https%3A%2F%2Fvideo.home%2Fstash%2Fscene%2F1%2Fmaster.m3u8%3Fquality%3D720p'
     );
+  });
+});
+
+describe('buildInjectedStreams', () => {
+  it('prepends External Remux HLS and External HLS streams when both are advertised', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['remux-hls', 'hls', 'direct', 'stash'],
+    });
+    const streams = buildInjectedStreams(
+      settings,
+      { ok: true, mode: ['remux-hls', 'hls', 'direct'] },
+      '42'
+    );
+    expect(streams).toHaveLength(2);
+    expect(streams[0]).toMatchObject({
+      mime_type: 'application/vnd.apple.mpegurl',
+      label: 'External Remux HLS',
+    });
+    expect(streams[0].url).toContain('/stash/scene/42/remux/master.m3u8');
+    expect(streams[1]).toMatchObject({
+      mime_type: 'application/vnd.apple.mpegurl',
+      label: 'External HLS',
+    });
+    expect(streams[1].url).toContain('/stash/scene/42/master.m3u8');
+  });
+
+  it('returns only External HLS when remux-hls is not advertised', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['remux-hls', 'hls', 'direct', 'stash'],
+    });
+    const streams = buildInjectedStreams(
+      settings,
+      { ok: true, mode: ['hls', 'direct'] },
+      '7'
+    );
+    expect(streams).toHaveLength(1);
+    expect(streams[0].label).toBe('External HLS');
+  });
+
+  it('returns no streams when probe advertises only direct (direct is excluded in integrated mode)', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['remux-hls', 'hls', 'direct', 'stash'],
+    });
+    const streams = buildInjectedStreams(settings, { ok: true, mode: ['direct'] }, '99');
+    expect(streams).toHaveLength(0);
+  });
+
+  it('returns no streams when probe mode is empty', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['remux-hls', 'hls', 'stash'],
+    });
+    const streams = buildInjectedStreams(settings, { ok: true, mode: [] }, '1');
+    expect(streams).toHaveLength(0);
+  });
+
+  it('respects playbackPriority order — hls before remux-hls when configured that way', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['hls', 'remux-hls', 'stash'],
+    });
+    const streams = buildInjectedStreams(
+      settings,
+      { ok: true, mode: ['remux-hls', 'hls'] },
+      '5'
+    );
+    expect(streams[0].label).toBe('External HLS');
+    expect(streams[1].label).toBe('External Remux HLS');
+  });
+
+  it('includes the shared token in stream URLs', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['hls', 'stash'],
+      sharedToken: 'secret',
+    });
+    const streams = buildInjectedStreams(settings, { ok: true, mode: ['hls'] }, '3');
+    expect(streams[0].url).toContain('token=secret');
   });
 });

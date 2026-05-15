@@ -1,4 +1,4 @@
-import type { PlaybackPlan, PluginSettings, ProbeResponse } from './types.js';
+import type { PlaybackPlan, PluginSettings, ProbeResponse, StashStream } from './types.js';
 
 export function isRemuxPathPattern(pathPattern: string): boolean {
   return /(^|\/)remux(\/|$)/.test(pathPattern);
@@ -136,6 +136,51 @@ export async function probeExternalAgent(
         error instanceof Error ? error.message : 'Probe failed',
     };
   }
+}
+
+/**
+ * Build stream entries to inject into Stash's native player when integrateIntoStashPlayer is enabled.
+ * Only HLS streams are produced — direct streams are excluded because cross-origin media-src CSP
+ * on the Stash UI would block them.
+ */
+export function buildInjectedStreams(
+  settings: PluginSettings,
+  probe: ProbeResponse,
+  sceneId: string
+): StashStream[] {
+  const streams: StashStream[] = [];
+  const advertisedModes = probe.mode ?? [];
+
+  for (const strategy of settings.playbackPriority) {
+    if (strategy === 'stash' || strategy === 'direct') continue;
+    if (!advertisedModes.includes(strategy)) continue;
+
+    if (strategy === 'remux-hls') {
+      streams.push({
+        url: buildPlaybackUrl(
+          settings.externalTranscodeBaseUrl,
+          settings.remuxHlsPathPattern,
+          sceneId,
+          settings.sharedToken
+        ),
+        mime_type: 'application/vnd.apple.mpegurl',
+        label: 'External Remux HLS',
+      });
+    } else if (strategy === 'hls') {
+      streams.push({
+        url: buildPlaybackUrl(
+          settings.externalTranscodeBaseUrl,
+          settings.hlsPathPattern,
+          sceneId,
+          settings.sharedToken
+        ),
+        mime_type: 'application/vnd.apple.mpegurl',
+        label: 'External HLS',
+      });
+    }
+  }
+
+  return streams;
 }
 
 /**

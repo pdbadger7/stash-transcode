@@ -1,3 +1,9 @@
+export interface StashStream {
+  url: string;
+  mime_type: string;
+  label?: string;
+}
+
 // Stash scene object interface
 export interface StashScene {
   id: string;
@@ -6,6 +12,7 @@ export interface StashScene {
   duration?: number;
   width?: number;
   height?: number;
+  sceneStreams?: StashStream[];
 }
 
 export interface StashFile {
@@ -22,6 +29,7 @@ export interface PluginSettings {
   remuxHlsPathPattern: string;
   hlsPathPattern: string;
   fallbackToStashPlayer: boolean;
+  integrateIntoStashPlayer: boolean;
   externalPlayerUrlTemplate: string;
   sharedToken?: string;
   debug: boolean;

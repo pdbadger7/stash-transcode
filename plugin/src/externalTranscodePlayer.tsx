@@ -2,6 +2,7 @@ import { React } from './runtime.js';
 import { GQL } from './runtime.js';
 import {
   buildExternalPlayerUrl,
+  buildInjectedStreams,
   buildPlaybackUrl,
   probeExternalAgent,
   resolvePlaybackPlan,
@@ -18,6 +19,7 @@ import type {
   PluginSettings,
   ProbeResponse,
 } from './types.js';
+
 
 const { useState, useEffect, useMemo } = React;
 
@@ -55,12 +57,14 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
     resolvedSettings.playbackMode
   );
   const [quality, setQuality] = useState<PlaybackQualityId>('auto');
+  const [injectedScene, setInjectedScene] = useState<StashScene | null>(null);
 
   useEffect(() => {
     setQuality('auto');
     setFailedPlaybackStrategies([]);
     setProbeResult(null);
     setPlaybackPlan(null);
+    setInjectedScene(null);
   }, [scene?.id]);
 
   if (resolvedSettings.debug) {
@@ -93,6 +97,23 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
         );
 
         if (cancelled) {
+          return;
+        }
+
+        if (resolvedSettings.integrateIntoStashPlayer) {
+          if (probeResult.ok) {
+            const streams = buildInjectedStreams(resolvedSettings, probeResult, scene.id);
+            if (streams.length > 0) {
+              setInjectedScene({
+                ...scene,
+                sceneStreams: [...streams, ...(scene.sceneStreams ?? [])],
+              });
+              if (resolvedSettings.debug)
+                console.log('[ScenePlayerPatch] Integrated mode: injecting', streams.length, 'stream(s)');
+            }
+          } else if (resolvedSettings.debug) {
+            console.log('[ScenePlayerPatch] Integrated mode: probe failed, using original scene');
+          }
           return;
         }
 
@@ -276,6 +297,11 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
         </div>
       </div>
     );
+  }
+
+  if (resolvedSettings.integrateIntoStashPlayer) {
+    const sceneToRender = injectedScene ?? scene;
+    return React.createElement(OriginalPlayer, buildOriginalPlayerProps(sceneToRender, playerProps));
   }
 
   if (useExternal && playbackUrl) {

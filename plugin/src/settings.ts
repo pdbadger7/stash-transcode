@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   remuxHlsPathPattern: '/stash/scene/{id}/remux/master.m3u8',
   hlsPathPattern: '/stash/scene/{id}/master.m3u8',
   fallbackToStashPlayer: true,
+  integrateIntoStashPlayer: false,
   externalPlayerUrlTemplate: '',
   sharedToken: '',
   debug: false,
