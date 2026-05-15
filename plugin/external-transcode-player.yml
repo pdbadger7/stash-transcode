@@ -2,7 +2,7 @@ name: External Transcode Player
 description: >
   Redirects scene playback to an external transcoding service while
   maintaining Stash as the UI and catalog.
-version: 0.1.9
+version: 0.2.0
 
 settings:
   externalTranscodeBaseUrl:
@@ -34,6 +34,14 @@ settings:
     displayName: Fallback to Stash Player
     description: >
       Fall back to the original Stash player if the external agent is unavailable or errors
+    type: BOOLEAN
+
+  integrateIntoStashPlayer:
+    displayName: Integrate into Stash Player
+    description: >
+      When enabled, inject external HLS streams into Stash's built-in player instead of
+      using the custom external player. Preserves markers, resume, captions, and source
+      selector. Requires a compatible browser (Chromium or Firefox recommended).
     type: BOOLEAN
 
   sharedToken:
