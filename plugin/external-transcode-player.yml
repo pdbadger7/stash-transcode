@@ -2,7 +2,7 @@ name: External Transcode Player
 description: >
   Redirects scene playback to an external transcoding service while
   maintaining Stash as the UI and catalog.
-version: 0.1.4
+version: 0.1.5
 
 settings:
   externalTranscodeBaseUrl:

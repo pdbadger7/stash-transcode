@@ -1,5 +1,9 @@
 # Changelog
 
+## Plugin 0.1.5 - 2026-05-15
+
+- Force a scene probe when the configured HLS path points at remux so incompatible scenes can still fall back to standard HLS even if "Probe External Agent" is disabled.
+
 ## Plugin 0.1.4 - 2026-05-15
 
 - Fall back from configured remux HLS to standard transcoded HLS when the agent probe does not advertise `remux-hls` for a scene.

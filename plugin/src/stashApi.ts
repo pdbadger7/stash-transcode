@@ -6,7 +6,7 @@ export interface PlaybackPlan {
   pathPattern: string;
 }
 
-function isRemuxPathPattern(pathPattern: string): boolean {
+export function isRemuxPathPattern(pathPattern: string): boolean {
   return /(^|\/)remux(\/|$)/.test(pathPattern);
 }
 

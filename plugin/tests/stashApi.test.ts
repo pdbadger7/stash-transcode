@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPlaybackUrl, resolvePlaybackPlan } from '../src/stashApi.js';
+import { buildPlaybackUrl, isRemuxPathPattern, resolvePlaybackPlan } from '../src/stashApi.js';
 import { normalizeSettings } from '../src/settings.js';
 
 describe('Stash API Utilities', () => {
@@ -75,5 +75,12 @@ describe('resolvePlaybackPlan', () => {
     });
 
     expect(resolvePlaybackPlan(settings, { ok: true, mode: ['direct'] })).toBeNull();
+  });
+});
+
+describe('isRemuxPathPattern', () => {
+  it('detects remux route patterns', () => {
+    expect(isRemuxPathPattern('/stash/scene/{id}/remux/master.m3u8')).toBe(true);
+    expect(isRemuxPathPattern('/stash/scene/{id}/master.m3u8')).toBe(false);
   });
 });

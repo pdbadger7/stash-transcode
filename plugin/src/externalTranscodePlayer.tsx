@@ -1,6 +1,11 @@
 import { React } from './runtime.js';
 import { GQL } from './runtime.js';
-import { buildPlaybackUrl, probeExternalAgent, resolvePlaybackPlan } from './stashApi.js';
+import {
+  buildPlaybackUrl,
+  isRemuxPathPattern,
+  probeExternalAgent,
+  resolvePlaybackPlan,
+} from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
 import { buildOriginalPlayerProps } from './playerProps.js';
 import { resolveSettings } from './settings.js';
@@ -67,8 +72,13 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
     const initializeExternalPlayer = async () => {
       try {
         let probeResult: ProbeResponse | undefined;
-        // Probe if enabled
-        if (resolvedSettings.probeBeforeReplace) {
+        const mustProbeForRemuxFallback =
+          resolvedSettings.playbackMode === 'hls' &&
+          isRemuxPathPattern(resolvedSettings.hlsPathPattern);
+        const shouldProbe = resolvedSettings.probeBeforeReplace || mustProbeForRemuxFallback;
+
+        // Probe when enabled, or when a remux HLS path needs route selection.
+        if (shouldProbe) {
           if (resolvedSettings.debug)
             console.log(`[ScenePlayerPatch] Probing scene ${scene.id}`);
           probeResult = await probeExternalAgent(
