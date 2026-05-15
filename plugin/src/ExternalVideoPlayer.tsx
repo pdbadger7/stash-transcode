@@ -229,12 +229,18 @@ interface DirectMseInput {
 }
 
 function startDirectMsePlayback(input: DirectMseInput): () => void {
+  const MediaSourceCtor = getDirectMediaSourceConstructor();
+  if (!MediaSourceCtor) {
+    reportDirectMseError(input, 'Direct MSE playback is not available in this browser');
+    return () => undefined;
+  }
+
   const controller = new AbortController();
-  const mediaSource = new MediaSource();
+  const mediaSource = new MediaSourceCtor();
   const objectUrl = URL.createObjectURL(mediaSource);
   input.video.src = objectUrl;
 
-  void streamDirectToMediaSource(input, mediaSource, controller.signal);
+  void streamDirectToMediaSource(input, mediaSource, MediaSourceCtor, controller.signal);
 
   return () => {
     controller.abort();
@@ -245,6 +251,7 @@ function startDirectMsePlayback(input: DirectMseInput): () => void {
 async function streamDirectToMediaSource(
   input: DirectMseInput,
   mediaSource: MediaSource,
+  MediaSourceCtor: MediaSourceConstructor,
   signal: AbortSignal
 ): Promise<void> {
   try {
@@ -261,7 +268,7 @@ async function streamDirectToMediaSource(
       throw new Error('Direct stream fetch did not return a readable body');
     }
 
-    const mimeType = pickMseMimeType(response.headers.get('content-type'));
+    const mimeType = pickMseMimeType(MediaSourceCtor, response.headers.get('content-type'));
     if (!mimeType) {
       throw new Error('Direct MSE playback supports only browser-compatible MP4 or WebM streams');
     }
@@ -286,13 +293,38 @@ async function streamDirectToMediaSource(
   } catch (err) {
     if (signal.aborted) return;
     const message = err instanceof Error ? err.message : 'Direct MSE playback failed';
-    console.warn('[ExternalVideoPlayer]', message);
-    input.setError(message);
-    input.onError?.(new Error(message));
+    reportDirectMseError(input, message);
   }
 }
 
-function pickMseMimeType(contentType: string | null): string | null {
+type MediaSourceConstructor = typeof MediaSource;
+
+interface MediaSourceGlobal {
+  MediaSource?: MediaSourceConstructor;
+  ManagedMediaSource?: MediaSourceConstructor;
+  WebKitMediaSource?: MediaSourceConstructor;
+}
+
+function getDirectMediaSourceConstructor(): MediaSourceConstructor | null {
+  const mediaWindow = globalThis as unknown as MediaSourceGlobal;
+  return (
+    mediaWindow.MediaSource ??
+    mediaWindow.ManagedMediaSource ??
+    mediaWindow.WebKitMediaSource ??
+    null
+  );
+}
+
+function reportDirectMseError(input: DirectMseInput, message: string): void {
+  console.warn('[ExternalVideoPlayer]', message);
+  input.setError(message);
+  input.onError?.(new Error(message));
+}
+
+function pickMseMimeType(
+  MediaSourceCtor: MediaSourceConstructor,
+  contentType: string | null
+): string | null {
   const normalized = contentType?.split(';')[0].trim().toLowerCase() ?? '';
   const candidates =
     normalized === 'video/webm'
@@ -307,7 +339,7 @@ function pickMseMimeType(contentType: string | null): string | null {
           ]
         : [];
 
-  return candidates.find((candidate) => MediaSource.isTypeSupported(candidate)) ?? null;
+  return candidates.find((candidate) => MediaSourceCtor.isTypeSupported(candidate)) ?? null;
 }
 
 function waitForMediaSourceOpen(mediaSource: MediaSource, signal: AbortSignal): Promise<void> {

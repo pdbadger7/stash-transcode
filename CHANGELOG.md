@@ -1,5 +1,10 @@
 # Changelog
 
+## Plugin 0.1.7 - 2026-05-15
+
+- Harden direct MSE playback to use the browser's available MediaSource implementation, including Safari-style ManagedMediaSource/WebKitMediaSource when present.
+- Publish a fresh plugin artifact so Stash can update away from stale bundles that still contain the old CSP direct-playback block.
+
 ## Plugin 0.1.6 - 2026-05-15
 
 - Replace the single playback mode setting with ordered playback priority across `remux-hls`, `hls`, `direct`, and `stash`.
