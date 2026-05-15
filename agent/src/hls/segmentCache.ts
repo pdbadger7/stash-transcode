@@ -42,6 +42,10 @@ export class SegmentCache {
   ): Promise<{ stream: ReadStream; size: number } | null> {
     const stat = await this.stat(sceneId, profileId, index);
     if (!stat) return null;
+    if (stat.size <= 0) {
+      await fs.rm(this.pathFor(sceneId, profileId, index), { force: true });
+      return null;
+    }
     return {
       stream: this.createReadStream(sceneId, profileId, index),
       size: stat.size,
@@ -88,6 +92,10 @@ export class SegmentCache {
     const tmp = `${target}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
     try {
       await producer(tmp);
+      const stat = await fs.stat(tmp);
+      if (stat.size <= 0) {
+        throw new Error(`Refusing to cache empty segment ${sceneId}/${profileId}/${index}`);
+      }
       await fs.rename(tmp, target);
     } catch (err) {
       await fs.rm(tmp, { force: true });

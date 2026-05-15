@@ -51,6 +51,20 @@ export function resolvePlaybackPlan(
   return null;
 }
 
+export function shouldUseStashPlayback(
+  settings: PluginSettings,
+  probe?: ProbeResponse,
+  failedStrategies: ReadonlySet<PlaybackPlan['id']> = new Set()
+): boolean {
+  const advertisedModes = probe?.mode ?? [];
+  for (const strategy of settings.playbackPriority) {
+    if (strategy === 'stash') return true;
+    if (!advertisedModes.includes(strategy) || failedStrategies.has(strategy)) continue;
+    return false;
+  }
+  return settings.fallbackToStashPlayer;
+}
+
 export function buildExternalPlayerUrl(template: string, url: string): string {
   return template
     .split('{encodedURL}')

@@ -4,6 +4,7 @@ import {
   buildPlaybackUrl,
   isRemuxPathPattern,
   resolvePlaybackPlan,
+  shouldUseStashPlayback,
 } from '../src/stashApi.js';
 import { normalizeSettings } from '../src/settings.js';
 
@@ -113,6 +114,33 @@ describe('resolvePlaybackPlan', () => {
       pathPattern: '/stash/scene/{id}/direct',
       supportsQuality: false,
     });
+  });
+});
+
+describe('shouldUseStashPlayback', () => {
+  it('uses Stash when all advertised external priorities have failed', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['direct', 'hls', 'stash'],
+      fallbackToStashPlayer: false,
+    });
+
+    expect(
+      shouldUseStashPlayback(
+        settings,
+        { ok: true, mode: ['direct', 'hls'] },
+        new Set(['direct', 'hls'])
+      )
+    ).toBe(true);
+  });
+
+  it('does not use Stash while an advertised external priority remains available', () => {
+    const settings = normalizeSettings({
+      playbackPriority: ['direct', 'hls', 'stash'],
+    });
+
+    expect(
+      shouldUseStashPlayback(settings, { ok: true, mode: ['direct', 'hls'] }, new Set(['direct']))
+    ).toBe(false);
   });
 });
 

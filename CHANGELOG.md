@@ -1,5 +1,15 @@
 # Changelog
 
+## Plugin 0.1.9 - 2026-05-15
+
+- Treat `stash` in playback priority as an explicit fallback target after advertised external modes fail, even when generic Stash fallback is disabled.
+- Force the embedded player to remount when switching playback strategies after a runtime error.
+
+## 0.3.12 - 2026-05-15
+
+- Treat empty cached HLS MPEG-TS segments as invalid and remove them so they are regenerated instead of being served as successful zero-byte media.
+- Reject empty newly produced HLS segments before they enter the cache.
+
 ## Plugin 0.1.8 - 2026-05-15
 
 - Continue down the playback priority list when an external player strategy fails at runtime, so incompatible direct MSE streams can fall back to HLS or Stash.

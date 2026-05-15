@@ -1,6 +1,6 @@
 {
   "name": "stash-external-transcode-plugin",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Stash UI plugin for external transcoding",
   "scripts": {
     "build": "node build.mjs",

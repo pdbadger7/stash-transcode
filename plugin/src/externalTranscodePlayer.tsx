@@ -5,6 +5,7 @@ import {
   buildPlaybackUrl,
   probeExternalAgent,
   resolvePlaybackPlan,
+  shouldUseStashPlayback,
 } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
 import type { ExternalPlayerLink } from './ExternalVideoPlayer.js';
@@ -99,7 +100,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           if (resolvedSettings.debug)
             console.log('[ScenePlayerPatch] Probe failed:', probeResult.error);
 
-          if (resolvedSettings.fallbackToStashPlayer) {
+          if (shouldUseStashPlayback(resolvedSettings)) {
             setUseExternal(false);
             setError(null);
             return;
@@ -122,7 +123,13 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
             console.log('[ScenePlayerPatch] No compatible external playback mode');
           }
 
-          if (resolvedSettings.fallbackToStashPlayer) {
+          if (
+            shouldUseStashPlayback(
+              resolvedSettings,
+              probeResult,
+              new Set(failedPlaybackStrategies)
+            )
+          ) {
             setUseExternal(false);
             setError(null);
             return;
@@ -168,7 +175,13 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           err instanceof Error ? err.message : 'Unknown error';
         console.error('[ScenePlayerPatch] Error:', message);
 
-        if (resolvedSettings.fallbackToStashPlayer) {
+        if (
+          shouldUseStashPlayback(
+            resolvedSettings,
+            probeResult ?? undefined,
+            new Set(failedPlaybackStrategies)
+          )
+        ) {
           setUseExternal(false);
           setError(null);
         } else {
@@ -212,6 +225,24 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
         setUseExternal(false);
         return;
       }
+
+      if (
+        shouldUseStashPlayback(
+          resolvedSettings,
+          probeResult ?? undefined,
+          new Set(nextFailedStrategies)
+        )
+      ) {
+        if (resolvedSettings.debug) {
+          console.log(`[ScenePlayerPatch] ${playbackPlan.id} failed; trying Stash player`);
+        }
+        setFailedPlaybackStrategies(nextFailedStrategies);
+        setPlaybackPlan(null);
+        setPlaybackUrl(null);
+        setUseExternal(false);
+        setError(null);
+        return;
+      }
     }
 
     if (resolvedSettings.fallbackToStashPlayer) {
@@ -250,6 +281,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   if (useExternal && playbackUrl) {
     return (
       <ExternalVideoPlayer
+        key={`${scene?.id}:${playbackPlan?.id ?? externalMode}:${playbackUrl}`}
         url={playbackUrl}
         mode={externalMode}
         title={scene?.title}

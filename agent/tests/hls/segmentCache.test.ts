@@ -38,12 +38,28 @@ describe('SegmentCache', () => {
     expect(Buffer.concat(chunks)).toEqual(buf);
   });
 
+  it('treats empty cached segments as missing and removes them', async () => {
+    await cache.write('scene1', '720p', 1, Buffer.alloc(0));
+
+    await expect(cache.openAsset('scene1', '720p', 1)).resolves.toBeNull();
+    await expect(cache.has('scene1', '720p', 1)).resolves.toBe(false);
+  });
+
   it('produces a segment atomically through a temp file', async () => {
     await cache.produceAtomic('scene1', '720p', 2, async (tmpPath) => {
       expect(tmpPath.endsWith('.tmp')).toBe(true);
       await fs.writeFile(tmpPath, 'atomic');
     });
     expect((await cache.read('scene1', '720p', 2)).toString()).toBe('atomic');
+  });
+
+  it('does not cache empty produced segments', async () => {
+    await expect(
+      cache.produceAtomic('scene1', '720p', 2, async (tmpPath) => {
+        await fs.writeFile(tmpPath, Buffer.alloc(0));
+      })
+    ).rejects.toThrow('Refusing to cache empty segment');
+    await expect(cache.has('scene1', '720p', 2)).resolves.toBe(false);
   });
 
   it('rejects path traversal attempts', async () => {
