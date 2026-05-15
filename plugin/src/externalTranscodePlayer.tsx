@@ -1,12 +1,13 @@
 import { React } from './runtime.js';
 import { GQL } from './runtime.js';
 import {
+  buildExternalPlayerUrl,
   buildPlaybackUrl,
-  isRemuxPathPattern,
   probeExternalAgent,
   resolvePlaybackPlan,
 } from './stashApi.js';
 import { ExternalVideoPlayer } from './ExternalVideoPlayer.js';
+import type { ExternalPlayerLink } from './ExternalVideoPlayer.js';
 import { buildOriginalPlayerProps } from './playerProps.js';
 import { resolveSettings } from './settings.js';
 import type {
@@ -42,6 +43,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   const [useExternal, setUseExternal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const [externalPlayerLinks, setExternalPlayerLinks] = useState<ExternalPlayerLink[]>([]);
   const [externalMode, setExternalMode] = useState<PluginSettings['playbackMode']>(
     resolvedSettings.playbackMode
   );
@@ -71,41 +73,32 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
 
     const initializeExternalPlayer = async () => {
       try {
-        let probeResult: ProbeResponse | undefined;
-        const mustProbeForRemuxFallback =
-          resolvedSettings.playbackMode === 'hls' &&
-          isRemuxPathPattern(resolvedSettings.hlsPathPattern);
-        const shouldProbe = resolvedSettings.probeBeforeReplace || mustProbeForRemuxFallback;
+        if (resolvedSettings.debug)
+          console.log(`[ScenePlayerPatch] Probing scene ${scene.id}`);
+        const probeResult: ProbeResponse = await probeExternalAgent(
+          resolvedSettings.externalTranscodeBaseUrl,
+          scene.id,
+          resolvedSettings.sharedToken,
+          controller.signal
+        );
 
-        // Probe when enabled, or when a remux HLS path needs route selection.
-        if (shouldProbe) {
+        if (cancelled) {
+          return;
+        }
+
+        if (!probeResult.ok) {
           if (resolvedSettings.debug)
-            console.log(`[ScenePlayerPatch] Probing scene ${scene.id}`);
-          probeResult = await probeExternalAgent(
-            resolvedSettings.externalTranscodeBaseUrl,
-            scene.id,
-            resolvedSettings.sharedToken,
-            controller.signal
-          );
+            console.log('[ScenePlayerPatch] Probe failed:', probeResult.error);
 
-          if (cancelled) {
-            return;
-          }
-
-          if (!probeResult.ok) {
-            if (resolvedSettings.debug)
-              console.log('[ScenePlayerPatch] Probe failed:', probeResult.error);
-
-            if (resolvedSettings.fallbackToStashPlayer) {
-              setUseExternal(false);
-              setError(null);
-              return;
-            }
-
-            setError(probeResult.error || 'Probe failed');
+          if (resolvedSettings.fallbackToStashPlayer) {
             setUseExternal(false);
+            setError(null);
             return;
           }
+
+          setError(probeResult.error || 'Probe failed');
+          setUseExternal(false);
+          return;
         }
 
         const playbackPlan = resolvePlaybackPlan(resolvedSettings, probeResult);
@@ -130,8 +123,13 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           playbackPlan.pathPattern,
           scene.id,
           resolvedSettings.sharedToken,
-          quality
+          playbackPlan.supportsQuality ? quality : undefined
         );
+        const links = buildExternalPlayerLinks({
+          settings: resolvedSettings,
+          sceneId: scene.id,
+          selectedUrl: url,
+        });
 
         if (cancelled) {
           return;
@@ -141,7 +139,8 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
           console.log('[ScenePlayerPatch] Using external player:', url);
 
         setPlaybackUrl(url);
-        setExternalMode(playbackPlan.mode);
+        setExternalMode(playbackPlan.playerMode);
+        setExternalPlayerLinks(links);
         setUseExternal(true);
         setError(null);
       } catch (err) {
@@ -215,6 +214,7 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
         title={scene?.title}
         debug={resolvedSettings.debug}
         selectedQuality={quality}
+        externalPlayerLinks={externalPlayerLinks}
         onQualityChange={setQuality}
         onError={handlePlaybackError}
       />
@@ -225,3 +225,35 @@ export const ScenePlayerPatch: React.FC<ScenePlayerPatchProps> = ({
   if (resolvedSettings.debug) console.log('[ScenePlayerPatch] Using original player');
   return React.createElement(OriginalPlayer, buildOriginalPlayerProps(scene, playerProps));
 };
+
+function buildExternalPlayerLinks(input: {
+  settings: PluginSettings;
+  sceneId: string;
+  selectedUrl: string;
+}): ExternalPlayerLink[] {
+  const template = input.settings.externalPlayerUrlTemplate.trim();
+  if (!template) return [];
+
+  const directUrl = buildPlaybackUrl(
+    input.settings.externalTranscodeBaseUrl,
+    input.settings.directPathPattern,
+    input.sceneId,
+    input.settings.sharedToken
+  );
+
+  const links: ExternalPlayerLink[] = [
+    {
+      label: 'Open Stream',
+      url: buildExternalPlayerUrl(template, input.selectedUrl),
+    },
+  ];
+
+  if (directUrl !== input.selectedUrl) {
+    links.push({
+      label: 'Open Direct',
+      url: buildExternalPlayerUrl(template, directUrl),
+    });
+  }
+
+  return links;
+}

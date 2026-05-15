@@ -1,5 +1,15 @@
 # Changelog
 
+## Plugin 0.1.6 - 2026-05-15
+
+- Replace the single playback mode setting with ordered playback priority across `remux-hls`, `hls`, `direct`, and `stash`.
+- Add a dedicated remux HLS path pattern and optional external-player URL buttons for the selected stream and direct stream.
+- Try cross-origin direct playback through a best-effort MSE fetch path before reporting unsupported direct playback.
+
+## 0.3.10 - 2026-05-15
+
+- Return direct stream responses explicitly from the agent route so range and full-file direct responses are not dropped by the handler.
+
 ## Plugin 0.1.5 - 2026-05-15
 
 - Force a scene probe when the configured HLS path points at remux so incompatible scenes can still fall back to standard HLS even if "Probe External Agent" is disabled.

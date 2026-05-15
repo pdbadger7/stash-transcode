@@ -2,7 +2,7 @@ name: External Transcode Player
 description: >
   Redirects scene playback to an external transcoding service while
   maintaining Stash as the UI and catalog.
-version: 0.1.5
+version: 0.1.6
 
 settings:
   externalTranscodeBaseUrl:
@@ -10,9 +10,9 @@ settings:
     description: Base URL of the external transcoding agent, including scheme (for example, https://video.home)
     type: STRING
 
-  playbackMode:
-    displayName: Playback Mode
-    description: Set to direct for MP4-style direct playback or hls for HLS streaming
+  playbackPriority:
+    displayName: Playback Priority
+    description: Comma-separated playback priority using remux-hls, hls, direct, and stash
     type: STRING
 
   directPathPattern:
@@ -21,14 +21,14 @@ settings:
     type: STRING
 
   hlsPathPattern:
-    displayName: HLS Playback Path Pattern
+    displayName: Transcoded HLS Path Pattern
     description: URL path pattern for the HLS master manifest; use {id} for the scene ID
     type: STRING
 
-  probeBeforeReplace:
-    displayName: Probe External Agent
-    description: Check whether the external agent is available before replacing the player
-    type: BOOLEAN
+  remuxHlsPathPattern:
+    displayName: Remux HLS Path Pattern
+    description: URL path pattern for copy-only remux HLS; use {id} for the scene ID
+    type: STRING
 
   fallbackToStashPlayer:
     displayName: Fallback to Stash Player
@@ -40,6 +40,12 @@ settings:
     displayName: Shared Authentication Token
     description: >
       Optional token to include in requests to the external agent. Leave empty for no authentication.
+    type: STRING
+
+  externalPlayerUrlTemplate:
+    displayName: External Player URL Template
+    description: >
+      Optional URL template for external-player buttons. Use {encodedURL} for the URL-encoded stream URL, for example iina://weblink?url={encodedURL}
     type: STRING
 
   debug:

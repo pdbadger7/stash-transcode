@@ -260,7 +260,7 @@ app.get<{
         if (!request.raw.complete) stream.destroy();
       });
 
-      reply
+      return reply
         .code(206)
         .header('Content-Type', getMimeType(filePath))
         .header('Content-Length', String(end - start + 1))
@@ -274,7 +274,7 @@ app.get<{
       request.raw.on('close', () => {
         if (!request.raw.complete) stream.destroy();
       });
-      reply
+      return reply
         .header('Content-Type', getMimeType(filePath))
         .header('Content-Length', String(fileSize))
         .header('Accept-Ranges', 'bytes')

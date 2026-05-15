@@ -17,10 +17,12 @@ export interface StashFile {
 export interface PluginSettings {
   externalTranscodeBaseUrl: string;
   playbackMode: 'direct' | 'hls';
+  playbackPriority: PlaybackStrategy[];
   directPathPattern: string;
+  remuxHlsPathPattern: string;
   hlsPathPattern: string;
-  probeBeforeReplace: boolean;
   fallbackToStashPlayer: boolean;
+  externalPlayerUrlTemplate: string;
   sharedToken?: string;
   debug: boolean;
 }
@@ -32,6 +34,17 @@ export interface ProbeResponse {
 }
 
 export type ProbePlaybackMode = 'direct' | 'hls' | 'remux-hls';
+
+export type PlaybackStrategy = ProbePlaybackMode | 'stash';
+
+export type PlayerMode = 'direct' | 'hls';
+
+export interface PlaybackPlan {
+  id: ProbePlaybackMode;
+  playerMode: PlayerMode;
+  pathPattern: string;
+  supportsQuality: boolean;
+}
 
 export type PlaybackQualityId =
   | 'auto'

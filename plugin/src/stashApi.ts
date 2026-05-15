@@ -1,10 +1,4 @@
-import { DEFAULT_SETTINGS } from './settings.js';
-import type { PluginSettings, ProbeResponse } from './types.js';
-
-export interface PlaybackPlan {
-  mode: PluginSettings['playbackMode'];
-  pathPattern: string;
-}
+import type { PlaybackPlan, PluginSettings, ProbeResponse } from './types.js';
 
 export function isRemuxPathPattern(pathPattern: string): boolean {
   return /(^|\/)remux(\/|$)/.test(pathPattern);
@@ -19,40 +13,48 @@ export function resolvePlaybackPlan(
   probe?: ProbeResponse
 ): PlaybackPlan | null {
   const advertisedModes = probe?.mode;
+  if (!advertisedModes) return null;
 
-  if (settings.playbackMode === 'direct') {
-    if (advertisedModes && !advertisedModes.includes('direct')) {
-      return null;
-    }
-    return {
-      mode: 'direct',
-      pathPattern: settings.directPathPattern,
-    };
-  }
+  for (const strategy of settings.playbackPriority) {
+    if (strategy === 'stash') return null;
 
-  const wantsRemux = isRemuxPathPattern(settings.hlsPathPattern);
-  if (advertisedModes) {
-    if (wantsRemux && advertisedModes.includes('remux-hls')) {
+    if (strategy === 'remux-hls' && advertisedModes.includes('remux-hls')) {
       return {
-        mode: 'hls',
+        id: 'remux-hls',
+        playerMode: 'hls',
+        pathPattern: settings.remuxHlsPathPattern,
+        supportsQuality: false,
+      };
+    }
+
+    if (strategy === 'hls' && advertisedModes.includes('hls')) {
+      return {
+        id: 'hls',
+        playerMode: 'hls',
         pathPattern: settings.hlsPathPattern,
+        supportsQuality: true,
       };
     }
 
-    if (advertisedModes.includes('hls')) {
+    if (strategy === 'direct' && advertisedModes.includes('direct')) {
       return {
-        mode: 'hls',
-        pathPattern: wantsRemux ? DEFAULT_SETTINGS.hlsPathPattern : settings.hlsPathPattern,
+        id: 'direct',
+        playerMode: 'direct',
+        pathPattern: settings.directPathPattern,
+        supportsQuality: false,
       };
     }
-
-    return null;
   }
 
-  return {
-    mode: 'hls',
-    pathPattern: settings.hlsPathPattern,
-  };
+  return null;
+}
+
+export function buildExternalPlayerUrl(template: string, url: string): string {
+  return template
+    .split('{encodedURL}')
+    .join(encodeURIComponent(url))
+    .split('{url}')
+    .join(url);
 }
 
 /**

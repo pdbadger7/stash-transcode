@@ -11,11 +11,9 @@ type ScenePlayerProps = {
 
 PluginApi.patch.instead(
   'ScenePlayer',
-  function (
-    props: ScenePlayerProps,
-    _: unknown,
-    original: React.ComponentType<Record<string, unknown>>
-  ) {
+  function (...args: unknown[]) {
+    const props = (args[0] ?? {}) as ScenePlayerProps;
+    const original = args[2] as React.ComponentType<Record<string, unknown>>;
     return React.createElement(ScenePlayerPatch, {
       ...props,
       originalComponent: original,

@@ -19,7 +19,7 @@ type StashPluginApi = {
   loadableComponents?: Record<string, Promise<unknown>>;
 };
 
-const pluginApi = (window as Window & { PluginApi: StashPluginApi }).PluginApi;
+const pluginApi = (window as unknown as Window & { PluginApi: StashPluginApi }).PluginApi;
 
 export const PluginApi = pluginApi;
 export const React = pluginApi.React;
